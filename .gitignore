@@ -50,10 +50,13 @@ backend/.env
 frontend/.env
 frontend/.env.local
 
-# Database Journals & Local DB Snapshots (preserve tracked base seeds)
-database/*.db-journal
-prisma/*.db-journal
+# SQLite Local Database Files (All data stored in TiDB Cloud)
+*.db
+*.db.bak
 *.db-journal
+database/*.db*
+prisma/*.db*
+dev.db
 
 # Logs & OS Metadata
 npm-debug.log*

@@ -5,10 +5,6 @@ from pydantic_settings import BaseSettings
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 ROOT_DIR = BASE_DIR.parent
-PRIMARY_DB_PATH = ROOT_DIR / "database" / "dev.db"
-FALLBACK_DB_PATH = ROOT_DIR / "prisma" / "dev.db"
-ACTIVE_DB_PATH = PRIMARY_DB_PATH if PRIMARY_DB_PATH.exists() else FALLBACK_DB_PATH
-
 TIDB_DB_URL = "mysql+pymysql://3aSDDEtX2DMhV19.root:K6erAQa24hXQCxwY@gateway01.ap-northeast-1.prod.aws.tidbcloud.com:4000/texflow?ssl_verify_cert=false&ssl_verify_identity=false"
 
 class Settings(BaseSettings):
