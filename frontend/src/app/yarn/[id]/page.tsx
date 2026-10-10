@@ -1,7 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { getYarnStockSummary, getLotRemainings } from "@/services/yarnService";
-import { getComputedNotifications } from "@/services/notificationService";
+import { apiClient } from "@/lib/apiClient";
 import AppShell from "@/components/layout/AppShell";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -15,30 +13,50 @@ export default async function YarnItemDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-  const notifications = await getComputedNotifications();
   const { id } = await params;
 
-  const yarn = await prisma.yarnItem.findUnique({
-    where: { id },
-    include: {
-      lots: {
-        include: { supplier: true },
-        orderBy: { receivedAt: "desc" },
-      },
-      stockMovements: {
-        include: { lot: true, order: true },
-        orderBy: { createdAt: "desc" },
-      },
-    },
-  });
+  let detail: any = null;
+  let notifications: any[] = [];
 
-  if (!yarn) {
+  try {
+    const [detailRes, notifRes] = await Promise.all([
+      apiClient.get<any>(`/yarn/${id}`),
+      apiClient.get<any[]>("/notifications"),
+    ]);
+    detail = detailRes;
+    if (notifRes) notifications = notifRes;
+  } catch {}
+
+  if (!detail || !detail.item) {
     notFound();
   }
 
-  const stockSummary = await getYarnStockSummary(yarn.id);
-  const lotsRemaining = await getLotRemainings(yarn.id);
-  const remainingByLotId = new Map(lotsRemaining.map((l) => [l.lotId, l.remainingKg]));
+  const yarn = {
+    ...detail.item,
+    lots: (detail.lots || []).map((l: any) => ({
+      id: l.lotId,
+      lotCode: l.lotCode,
+      supplier: { name: l.supplierName || "Direct Supplier" },
+      qtyReceivedKg: l.qtyReceivedKg,
+      unitCostPerKg: l.unitCostPerKg,
+      receivedAt: new Date(l.receivedAt),
+    })),
+    stockMovements: (detail.movements || []).map((m: any) => ({
+      id: m.id,
+      type: m.type,
+      qtyKg: m.qtyKg,
+      reason: m.reason,
+      createdBy: m.createdBy,
+      createdAt: new Date(m.createdAt),
+      lot: m.lotCode ? { lotCode: m.lotCode } : null,
+      order: m.orderNo ? { orderNo: m.orderNo } : null,
+    })),
+  };
+
+  const stockSummary = detail.stock;
+  const remainingByLotId = new Map(
+    (detail.lots || []).map((l: any) => [l.lotId, l.remainingKg])
+  );
 
   return (
     <AppShell user={user} notifications={notifications}>
@@ -130,7 +148,7 @@ export default async function YarnItemDetailPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#DCE3E1]">
-                {yarn.lots.map((lot) => {
+                {yarn.lots.map((lot: any) => {
                   const rem = remainingByLotId.get(lot.id) ?? lot.qtyReceivedKg;
                   return (
                     <tr key={lot.id} className="hover:bg-[#F9FAFA]">
@@ -187,7 +205,7 @@ export default async function YarnItemDetailPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#DCE3E1]">
-                {yarn.stockMovements.map((m) => (
+                {yarn.stockMovements.map((m: any) => (
                   <tr key={m.id} className="hover:bg-[#F9FAFA]">
                     <td className="py-2.5 px-4 text-[#617078] font-mono-id">
                       {new Date(m.createdAt).toLocaleDateString()} {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

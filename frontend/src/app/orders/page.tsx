@@ -1,8 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { getOrderProgress } from "@/services/progressService";
-import { calculateOrderRisk } from "@/services/financeService";
-import { getComputedNotifications } from "@/services/notificationService";
+import { apiClient } from "@/lib/apiClient";
 import AppShell from "@/components/layout/AppShell";
 import OrderListClient from "./OrderListClient";
 
@@ -10,64 +7,49 @@ export const dynamic = "force-dynamic";
 
 export default async function OrdersPage() {
   const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-  const notifications = await getComputedNotifications();
 
-  const orders = await prisma.order.findMany({
-    include: {
-      buyer: true,
-      fabricType: true,
-      workOrders: true,
-      rolls: {
-        include: { dispatchLine: true },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  let ordersRaw: any[] = [];
+  let formData: any = { buyers: [], fabricTypes: [] };
+  let notifications: any[] = [];
 
-  const buyers = await prisma.buyer.findMany({
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
+  try {
+    const [ordersRes, formRes, notifRes] = await Promise.all([
+      apiClient.get<any[]>("/orders"),
+      apiClient.get<any>("/orders/form-data"),
+      apiClient.get<any[]>("/notifications"),
+    ]);
+    if (ordersRes) ordersRaw = ordersRes;
+    if (formRes) formData = formRes;
+    if (notifRes) notifications = notifRes;
+  } catch {}
 
-  const fabricTypes = await prisma.fabricType.findMany({
-    include: { yarnItem: true },
-    orderBy: { name: "asc" },
-  });
+  const ordersData = ordersRaw.map((ord: any) => ({
+    id: ord.id,
+    orderNo: ord.orderNo,
+    buyerName: ord.buyer?.name || "",
+    fabricName: ord.fabricType?.name || "",
+    colour: ord.colour,
+    qtyMetres: ord.qtyMetres,
+    deadline: ord.deadline,
+    status: ord.status,
+    submittedByBuyer: ord.submittedByBuyer,
+    risk: ord.risk,
+    progress: ord.progress,
+  }));
 
-  const ordersData = await Promise.all(
-    orders.map(async (ord) => {
-      const progress = await getOrderProgress(ord.id);
-      const risk = await calculateOrderRisk(ord);
-
-      return {
-        id: ord.id,
-        orderNo: ord.orderNo,
-        buyerName: ord.buyer.name,
-        fabricName: ord.fabricType.name,
-        colour: ord.colour,
-        qtyMetres: ord.qtyMetres,
-        deadline: ord.deadline.toISOString(),
-        status: ord.status,
-        submittedByBuyer: ord.submittedByBuyer,
-        risk,
-        progress,
-      };
-    })
-  );
-
-  const fabricOptions = fabricTypes.map((ft) => ({
+  const fabricOptions = (formData.fabricTypes || []).map((ft: any) => ({
     id: ft.id,
     name: ft.name,
     yarnKgPerMetre: ft.yarnKgPerMetre,
     defaultPricePerMetre: ft.defaultPricePerMetre,
-    yarnCode: ft.yarnItem.code,
+    yarnCode: ft.yarnCode || "",
   }));
 
   return (
     <AppShell user={user} notifications={notifications}>
       <OrderListClient
         orders={ordersData}
-        buyers={buyers}
+        buyers={formData.buyers || []}
         fabricTypes={fabricOptions}
         userRole={user.role}
       />

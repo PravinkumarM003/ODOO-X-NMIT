@@ -1,6 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { getComputedNotifications } from "@/services/notificationService";
+import { apiClient } from "@/lib/apiClient";
 import AppShell from "@/components/layout/AppShell";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -27,41 +26,19 @@ export default async function RollPassportPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-  const notifications = await getComputedNotifications();
   const { id } = await params;
 
-  // Search by either database ID or rollNo (e.g. ROLL-0005)
-  const roll = await prisma.roll.findFirst({
-    where: {
-      OR: [{ id }, { rollNo: id }],
-    },
-    include: {
-      order: {
-        include: {
-          buyer: true,
-          fabricType: { include: { yarnItem: true } },
-          workOrders: {
-            include: {
-              machine: true,
-              productionLogs: { include: { employee: true } },
-            },
-          },
-        },
-      },
-      weavingMachine: true,
-      dyeingMachine: true,
-      qcRecords: {
-        orderBy: { createdAt: "desc" },
-      },
-      dispatchLine: {
-        include: {
-          dispatch: {
-            include: { invoice: true },
-          },
-        },
-      },
-    },
-  });
+  let roll: any = null;
+  let notifications: any[] = [];
+
+  try {
+    const [rollRes, notifRes] = await Promise.all([
+      apiClient.get<any>(`/rolls/${id}`),
+      apiClient.get<any[]>("/notifications"),
+    ]);
+    roll = rollRes;
+    if (notifRes) notifications = notifRes;
+  } catch {}
 
   if (!roll) {
     notFound();
@@ -207,7 +184,7 @@ export default async function RollPassportPage({
             </h2>
 
             <div className="space-y-3">
-              {roll.qcRecords.map((qc, idx) => (
+              {roll.qcRecords.map((qc: any, idx: number) => (
                 <div
                   key={qc.id}
                   className={`p-3.5 rounded-lg border text-xs ${

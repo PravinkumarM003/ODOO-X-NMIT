@@ -1,7 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { getOrderProgress } from "@/services/progressService";
-import { calculateOrderRisk } from "@/services/financeService";
+import { apiClient } from "@/lib/apiClient";
 import AppShell from "@/components/layout/AppShell";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -11,12 +9,8 @@ import {
   Clock,
   Truck,
   FileText,
-  Package,
-  Layers,
   Cpu,
-  Calendar,
 } from "lucide-react";
-import { getBuyerStatusWording } from "../page";
 
 export const dynamic = "force-dynamic";
 
@@ -32,49 +26,18 @@ export default async function BuyerOrderDetailPage({
 
   const { id } = await params;
 
-  const order = await prisma.order.findUnique({
-    where: { id },
-    include: {
-      buyer: true,
-      fabricType: true,
-      workOrders: {
-        orderBy: { stage: "asc" },
-      },
-      rolls: {
-        include: { dispatchLine: true },
-      },
-      dispatches: {
-        include: { lines: true },
-        orderBy: { dispatchedAt: "desc" },
-      },
-      invoices: {
-        include: { payments: true },
-        orderBy: { issuedAt: "desc" },
-      },
-    },
-  });
-
-  // Security guard: Ensure this order belongs to the logged-in buyer!
-  if (!order || order.buyerId !== session.buyerId) {
+  let detail: any = null;
+  try {
+    detail = await apiClient.get<any>(`/buyer/orders/${id}`);
+  } catch {
     notFound();
   }
 
-  const progress = await getOrderProgress(order.id);
-  const risk = await calculateOrderRisk(order);
-  const buyerStatus = getBuyerStatusWording(order.status, order.currentStage);
-
-  // Compute estimated readiness text (label it "Estimate" per Section 7.10)
-  const stageEstimates: Record<string, number> = { SPINNING: 2, WEAVING: 3, DYEING: 2 };
-  let estimatedDays = 1; // QC
-  for (const wo of order.workOrders) {
-    if (wo.status !== "COMPLETED") {
-      estimatedDays += stageEstimates[wo.stage] || 2;
-    }
+  if (!detail || !detail.order) {
+    notFound();
   }
-  const estReadyDate = new Date(Date.now() + estimatedDays * 86400000);
 
-  const passedRollsCount = order.rolls.filter((r) => r.qcStatus === "PASSED").length;
-  const awaitingCheckCount = order.rolls.filter((r) => r.qcStatus === "PENDING" || r.qcStatus === "REWORK").length;
+  const { order, progress, workOrders = [], dispatches = [], invoices = [] } = detail;
 
   return (
     <AppShell user={session} notifications={[]}>
@@ -95,18 +58,18 @@ export default async function BuyerOrderDetailPage({
               <div className="flex items-center gap-3">
                 <h1 className="text-xl font-bold font-mono-id text-[#176B63]">{order.orderNo}</h1>
                 <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-[#EBF3F1] text-[#176B63]">
-                  {buyerStatus}
+                  {order.buyerStatus}
                 </span>
               </div>
               <p className="text-sm font-semibold text-[#202B32] mt-1">
-                {order.fabricType.name} · Colour: {order.colour}
+                {order.fabricName} · Colour: {order.colour}
               </p>
             </div>
 
             <div className="text-right">
               <span className="text-xs text-[#617078] block">Order Quantity</span>
               <span className="font-mono-id text-lg font-bold text-[#202B32]">
-                {order.qtyMetres.toLocaleString()} Metres
+                {Number(order.qtyMetres || 0).toLocaleString()} Metres
               </span>
             </div>
           </div>
@@ -123,9 +86,7 @@ export default async function BuyerOrderDetailPage({
             <div>
               <span className="text-[#617078] font-medium block">Estimated Completion:</span>
               <p className="font-mono-id font-bold text-[#176B63]">
-                {order.status === "COMPLETED"
-                  ? "Delivered"
-                  : `~${estReadyDate.toLocaleDateString()} (Estimate)`}
+                {order.estimatedCompletion}
               </p>
             </div>
           </div>
@@ -157,23 +118,18 @@ export default async function BuyerOrderDetailPage({
             <div className="p-3 bg-[#F9FAFA] rounded border border-[#DCE3E1]">
               <span className="text-[11px] font-bold text-[#617078] uppercase block">QC Readiness</span>
               <p className="text-xs font-semibold text-[#202B32] mt-0.5">
-                {progress.qcReadiness.statusText}
+                {progress.qcReadinessText}
               </p>
               <span className="text-[11px] text-[#617078] mt-1 block">
-                {passedRollsCount} rolls passed inspection · {awaitingCheckCount} rolls awaiting check
+                {progress.passedRollsCount} rolls passed inspection · {progress.awaitingCheckCount} rolls awaiting check
               </span>
             </div>
 
             <div className="p-3 bg-[#F9FAFA] rounded border border-[#DCE3E1]">
               <span className="text-[11px] font-bold text-[#617078] uppercase block">Dispatch Completion</span>
               <p className="text-xs font-semibold text-[#202B32] mt-0.5">
-                {progress.dispatchCompletion.summaryText}
+                {progress.dispatchSummaryText}
               </p>
-              {progress.dispatchCompletion.shortfallNote && (
-                <span className="text-[11px] text-[#B44545] font-semibold mt-1 block">
-                  {progress.dispatchCompletion.shortfallNote}
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -192,7 +148,7 @@ export default async function BuyerOrderDetailPage({
               { id: "DYEING", label: "3. Vat Dyeing" },
               { id: "QC", label: "4. Quality Inspection" },
             ].map((stg) => {
-              const wo = order.workOrders.find((w) => w.stage === stg.id);
+              const wo = workOrders.find((w: any) => w.stage === stg.id);
               const isQC = stg.id === "QC";
               const isCurrent =
                 (stg.id === "SPINNING" && order.currentStage === "SPINNING") ||
@@ -239,13 +195,13 @@ export default async function BuyerOrderDetailPage({
           <div className="bg-white border border-[#DCE3E1] rounded-lg p-4 shadow-xs">
             <h2 className="text-xs font-bold uppercase tracking-wider text-[#202B32] mb-3 flex items-center gap-1.5">
               <Truck className="w-4 h-4 text-[#176B63]" />
-              Shipping Consignments ({order.dispatches.length})
+              Shipping Consignments ({dispatches.length})
             </h2>
-            {order.dispatches.length === 0 ? (
+            {dispatches.length === 0 ? (
               <p className="text-xs text-[#617078] py-3 text-center">No shipments dispatched yet.</p>
             ) : (
               <div className="space-y-2">
-                {order.dispatches.map((d) => (
+                {dispatches.map((d: any) => (
                   <div key={d.id} className="p-3 bg-[#F9FAFA] border border-[#DCE3E1] rounded text-xs">
                     <div className="flex items-center justify-between font-mono-id font-bold text-[#176B63]">
                       <span>{d.dispatchNo}</span>
@@ -255,7 +211,7 @@ export default async function BuyerOrderDetailPage({
                       Truck: <strong>{d.truckNo}</strong> · Driver: {d.driverName}
                     </div>
                     <div className="mt-0.5 text-[11px] text-[#617078]">
-                      Delivered: {d.lines.length} rolls ({d.lines.reduce((a, l) => a + l.lengthMetres, 0)} m)
+                      Delivered: {d.rollCount} rolls ({d.totalMetres} m)
                     </div>
                   </div>
                 ))}
@@ -267,13 +223,13 @@ export default async function BuyerOrderDetailPage({
           <div className="bg-white border border-[#DCE3E1] rounded-lg p-4 shadow-xs">
             <h2 className="text-xs font-bold uppercase tracking-wider text-[#202B32] mb-3 flex items-center gap-1.5">
               <FileText className="w-4 h-4 text-[#176B63]" />
-              Commercial Invoices ({order.invoices.length})
+              Commercial Invoices ({invoices.length})
             </h2>
-            {order.invoices.length === 0 ? (
+            {invoices.length === 0 ? (
               <p className="text-xs text-[#617078] py-3 text-center">No invoices issued yet.</p>
             ) : (
               <div className="space-y-2">
-                {order.invoices.map((inv) => (
+                {invoices.map((inv: any) => (
                   <div key={inv.id} className="p-3 bg-[#F9FAFA] border border-[#DCE3E1] rounded text-xs">
                     <div className="flex items-center justify-between">
                       <span className="font-mono-id font-bold text-[#176B63]">{inv.invoiceNo}</span>
@@ -290,7 +246,7 @@ export default async function BuyerOrderDetailPage({
                       </span>
                     </div>
                     <div className="mt-1 text-[11px] font-mono-id text-[#202B32]">
-                      Amount: ₹{inv.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      Amount: ₹{Number(inv.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                     </div>
                   </div>
                 ))}

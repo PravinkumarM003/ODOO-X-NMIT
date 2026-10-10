@@ -1,6 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { getMonthlyFinance, getMonthlyWages } from "@/services/financeService";
-import { getComputedNotifications } from "@/services/notificationService";
+import { apiClient } from "@/lib/apiClient";
 import AppShell from "@/components/layout/AppShell";
 import FinanceClient from "./FinanceClient";
 import Forbidden from "@/components/common/Forbidden";
@@ -23,21 +22,41 @@ export default async function FinancePage({
     );
   }
 
-  const notifications = await getComputedNotifications();
   const params = await searchParams;
-
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const selectedMonth = params.month || defaultMonth;
 
-  const finance = await getMonthlyFinance(selectedMonth);
-  const wages = await getMonthlyWages(selectedMonth);
+  let financeData: any = {
+    month: selectedMonth,
+    cashIn: 0,
+    cashOut: 0,
+    netCashMovement: 0,
+    machineOutputMetres: 0,
+    unpaidCustomerTotal: 0,
+    unpaidSupplierTotal: 0,
+    closedWagesTotal: 0,
+    unpaidObligationsTotal: 0,
+    payments: [],
+    supplierBills: [],
+    wages: [],
+  };
+  let notifications: any[] = [];
+
+  try {
+    const [finRes, notifRes] = await Promise.all([
+      apiClient.get<any>(`/finance?month=${selectedMonth}`),
+      apiClient.get<any[]>("/notifications"),
+    ]);
+    if (finRes) financeData = finRes;
+    if (notifRes) notifications = notifRes;
+  } catch {}
 
   return (
     <AppShell user={user} notifications={notifications}>
       <FinanceClient
-        finance={finance}
-        wages={wages}
+        finance={financeData}
+        wages={financeData.wages || []}
         selectedMonth={selectedMonth}
       />
     </AppShell>

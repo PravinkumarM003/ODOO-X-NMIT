@@ -1,8 +1,8 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { apiClient } from "@/lib/apiClient";
 import AppShell from "@/components/layout/AppShell";
 import { redirect } from "next/navigation";
-import { FileText, CheckCircle2 } from "lucide-react";
+import { FileText } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -12,17 +12,11 @@ export default async function BuyerInvoicesPage() {
     redirect("/overview");
   }
 
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      order: { buyerId: session.buyerId },
-    },
-    include: {
-      order: true,
-      dispatch: true,
-      payments: true,
-    },
-    orderBy: { issuedAt: "desc" },
-  });
+  let invoices: any[] = [];
+  try {
+    const res = await apiClient.get<any[]>("/buyer/invoices");
+    if (res) invoices = res;
+  } catch {}
 
   return (
     <AppShell user={session} notifications={[]}>
@@ -59,36 +53,33 @@ export default async function BuyerInvoicesPage() {
                     </td>
                   </tr>
                 ) : (
-                  invoices.map((inv) => {
-                    const totalPaid = inv.payments.reduce((a, p) => a + p.amount, 0);
-                    return (
-                      <tr key={inv.id} className="hover:bg-[#F9FAFA]">
-                        <td className="py-3 px-4 font-mono-id font-bold text-[#176B63]">{inv.invoiceNo}</td>
-                        <td className="py-3 px-4 text-[#617078]">{new Date(inv.issuedAt).toLocaleDateString()}</td>
-                        <td className="py-3 px-4 font-mono-id">{inv.order.orderNo}</td>
-                        <td className="py-3 px-4 font-mono-id text-[#54758A]">{inv.dispatch.dispatchNo}</td>
-                        <td className="py-3 px-4 text-right font-mono-id font-bold text-[#202B32]">
-                          ₹{inv.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono-id font-bold text-[#277653]">
-                          ₹{totalPaid.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <span
-                            className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              inv.status === "PAID"
-                                ? "bg-green-100 text-[#277653]"
-                                : inv.status === "PARTIAL"
-                                ? "bg-amber-100 text-[#A86F1F]"
-                                : "bg-red-100 text-[#B44545]"
-                            }`}
-                          >
-                            {inv.status}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
+                  invoices.map((inv) => (
+                    <tr key={inv.id} className="hover:bg-[#F9FAFA]">
+                      <td className="py-3 px-4 font-mono-id font-bold text-[#176B63]">{inv.invoiceNo}</td>
+                      <td className="py-3 px-4 text-[#617078]">{new Date(inv.issuedAt).toLocaleDateString()}</td>
+                      <td className="py-3 px-4 font-mono-id">{inv.orderNo || "—"}</td>
+                      <td className="py-3 px-4 font-mono-id text-[#54758A]">{inv.dispatchNo || "—"}</td>
+                      <td className="py-3 px-4 text-right font-mono-id font-bold text-[#202B32]">
+                        ₹{Number(inv.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono-id font-bold text-[#277653]">
+                        ₹{Number(inv.paidAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span
+                          className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            inv.status === "PAID"
+                              ? "bg-green-100 text-[#277653]"
+                              : inv.status === "PARTIAL"
+                              ? "bg-amber-100 text-[#A86F1F]"
+                              : "bg-red-100 text-[#B44545]"
+                          }`}
+                        >
+                          {inv.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>

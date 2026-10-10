@@ -1,8 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { getOrderProgress } from "@/services/progressService";
-import { calculateOrderRisk, getOrderCost } from "@/services/financeService";
-import { getComputedNotifications } from "@/services/notificationService";
+import { apiClient } from "@/lib/apiClient";
 import AppShell from "@/components/layout/AppShell";
 import OrderDetailClient from "./OrderDetailClient";
 import { notFound } from "next/navigation";
@@ -15,65 +12,32 @@ export default async function OrderDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-  const notifications = await getComputedNotifications();
   const { id } = await params;
 
-  const order = await prisma.order.findUnique({
-    where: { id },
-    include: {
-      buyer: true,
-      fabricType: {
-        include: { yarnItem: true },
-      },
-      workOrders: {
-        include: {
-          machine: true,
-          productionLogs: {
-            include: { employee: true },
-          },
-        },
-      },
-      rolls: {
-        include: {
-          weavingMachine: true,
-          dyeingMachine: true,
-          dispatchLine: true,
-          qcRecords: true,
-        },
-      },
-      dispatches: {
-        include: {
-          lines: true,
-          invoice: true,
-        },
-      },
-      invoices: {
-        include: {
-          payments: true,
-        },
-      },
-      stockMovements: {
-        include: {
-          lot: true,
-        },
-      },
-    },
-  });
+  let detail: any = null;
+  let notifications: any[] = [];
 
-  if (!order) {
+  try {
+    const [detailRes, notifRes] = await Promise.all([
+      apiClient.get<any>(`/orders/${id}`),
+      apiClient.get<any[]>("/notifications"),
+    ]);
+    detail = detailRes;
+    if (notifRes) notifications = notifRes;
+  } catch {}
+
+  if (!detail || !detail.order) {
     notFound();
   }
 
-  const progress = await getOrderProgress(order.id);
-  const risk = await calculateOrderRisk(order);
-  const cost = user.role === "OWNER" ? await getOrderCost(order.id) : null;
+  const cost = user.role === "OWNER" ? detail.cost : null;
 
   return (
     <AppShell user={user} notifications={notifications}>
       <OrderDetailClient
-        order={order}
-        progress={progress}
-        risk={risk}
+        order={detail.order}
+        progress={detail.progress}
+        risk={detail.risk}
         cost={cost}
         userRole={user.role}
       />

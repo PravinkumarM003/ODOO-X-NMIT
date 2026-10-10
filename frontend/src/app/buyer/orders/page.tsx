@@ -1,6 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { getOrderProgress } from "@/services/progressService";
+import { apiClient } from "@/lib/apiClient";
 import AppShell from "@/components/layout/AppShell";
 import BuyerOrdersClient from "./BuyerOrdersClient";
 import { redirect } from "next/navigation";
@@ -31,54 +30,35 @@ export default async function BuyerOrdersPage() {
     redirect("/overview");
   }
 
-  const buyer = await prisma.buyer.findUnique({
-    where: { id: session.buyerId },
-  });
+  let data: any = { orders: [], fabricTypes: [], buyer: null };
+  try {
+    const res = await apiClient.get<any>("/buyer/orders");
+    if (res) data = res;
+  } catch {}
 
-  const orders = await prisma.order.findMany({
-    where: { buyerId: session.buyerId },
-    include: {
-      fabricType: true,
-      workOrders: true,
-      rolls: {
-        include: { dispatchLine: true },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const ordersData = await Promise.all(
-    orders.map(async (ord) => {
-      const progress = await getOrderProgress(ord.id);
-      const buyerStatusText = getBuyerStatusWording(ord.status, ord.currentStage);
-
-      return {
-        id: ord.id,
-        orderNo: ord.orderNo,
-        fabricName: ord.fabricType.name,
-        colour: ord.colour,
-        qtyMetres: ord.qtyMetres,
-        deadline: ord.deadline.toISOString(),
-        buyerStatusText,
-        internalStatus: ord.status,
-        productionProgressPercent: progress.productionProgressPercent,
-        qcReadinessText: progress.qcReadiness.statusText,
-        dispatchSummaryText: progress.dispatchCompletion.summaryText,
-      };
-    })
-  );
-
-  const fabricTypes = await prisma.fabricType.findMany({
-    select: { id: true, name: true, defaultPricePerMetre: true },
-    orderBy: { name: "asc" },
+  const ordersData = (data.orders || []).map((ord: any) => {
+    const buyerStatusText = getBuyerStatusWording(ord.status, ord.currentStage);
+    return {
+      id: ord.id,
+      orderNo: ord.orderNo,
+      fabricName: ord.fabricName,
+      colour: ord.colour,
+      qtyMetres: ord.qtyMetres,
+      deadline: ord.deadline,
+      buyerStatusText,
+      internalStatus: ord.status,
+      productionProgressPercent: ord.progress?.productionProgressPercent || 0,
+      qcReadinessText: ord.progress?.qcReadiness?.statusText || "Pending",
+      dispatchSummaryText: ord.progress?.dispatchCompletion?.summaryText || "0% Shipped",
+    };
   });
 
   return (
     <AppShell user={session} notifications={[]}>
       <BuyerOrdersClient
         orders={ordersData}
-        fabricTypes={fabricTypes}
-        buyerName={buyer?.name || session.name}
+        fabricTypes={data.fabricTypes || []}
+        buyerName={data.buyer?.name || session.name}
       />
     </AppShell>
   );
