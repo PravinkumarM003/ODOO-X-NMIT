@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "typecheck": "tsc --noEmit",
-    "seed": "tsx scripts/seed.ts",
-    "test": "tsx scripts/test-runner.ts"
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix frontend run start",
+    "lint": "npm --prefix frontend run lint",
+    "typecheck": "npm --prefix frontend run typecheck",
+    "seed": "npm --prefix frontend run seed",
+    "test": "npm --prefix frontend test"
   },
   "dependencies": {
     "@prisma/client": "6.4.1",

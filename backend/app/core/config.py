@@ -5,7 +5,9 @@ from pydantic_settings import BaseSettings
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 ROOT_DIR = BASE_DIR.parent
-DEFAULT_DB_PATH = ROOT_DIR / "prisma" / "dev.db"
+PRIMARY_DB_PATH = ROOT_DIR / "database" / "dev.db"
+FALLBACK_DB_PATH = ROOT_DIR / "prisma" / "dev.db"
+ACTIVE_DB_PATH = PRIMARY_DB_PATH if PRIMARY_DB_PATH.exists() else FALLBACK_DB_PATH
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "TexFlow Textile Manufacturing Platform"
@@ -14,7 +16,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     DATABASE_URL: str = os.getenv(
-        "DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
+        "DATABASE_URL", f"sqlite:///{ACTIVE_DB_PATH.as_posix()}"
     )
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",

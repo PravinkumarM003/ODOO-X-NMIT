@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { deriveOrderStatusFromRolls } from "../src/services/orderStatusService";
+import { deriveOrderStatusFromRolls } from "../frontend/src/services/orderStatusService";
 
 const prisma = new PrismaClient();
 

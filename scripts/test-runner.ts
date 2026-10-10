@@ -4,17 +4,17 @@ import {
   receiveYarn,
   adjustStock,
   getLotRemainings,
-} from "../src/services/yarnService";
+} from "../frontend/src/services/yarnService";
 import {
   deriveOrderStatusFromRolls,
   recomputeOrderStatus,
-} from "../src/services/orderStatusService";
+} from "../frontend/src/services/orderStatusService";
 import {
   createOrder,
   reviewBuyerOrder,
   cancelOrder,
   autoAllocateYarn,
-} from "../src/services/orderService";
+} from "../frontend/src/services/orderService";
 import {
   assignMachineToWorkOrder,
   logProductionOutput,
@@ -22,10 +22,10 @@ import {
   completeStage,
   reportMachineBreakdown,
   resolveMachineBreakdown,
-} from "../src/services/productionService";
-import { registerRolls, inspectRoll } from "../src/services/qcService";
-import { createDispatch, recordPayment, getStoreRolls } from "../src/services/dispatchService";
-import { getOrderProgress } from "../src/services/progressService";
+} from "../frontend/src/services/productionService";
+import { registerRolls, inspectRoll } from "../frontend/src/services/qcService";
+import { createDispatch, recordPayment, getStoreRolls } from "../frontend/src/services/dispatchService";
+import { getOrderProgress } from "../frontend/src/services/progressService";
 import {
   getMonthlyFinance,
   getMonthlyWages,
@@ -33,8 +33,8 @@ import {
   closeMonthWages,
   markWagesPaid,
   calculateOrderRisk,
-} from "../src/services/financeService";
-import { verifyPassword } from "../src/lib/auth";
+} from "../frontend/src/services/financeService";
+import { verifyPassword } from "../frontend/src/lib/auth";
 
 const prisma = new PrismaClient();
 

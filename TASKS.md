@@ -20,9 +20,24 @@ Single source of truth for progress. Source specification: `TexFlow_Build_Prompt
 | M7 People, cost, finance | 2.5 h | DONE | 19, 20, 27, 28 |
 | M8 Overview, notifications, polish | 2.0 h | DONE | 21, 22, full cross-screen Test 25 |
 | Final: regression, demo, critical fixes | 2.5 h | DONE | all 1 to 32 |
-| **Backend Migration: Python FastAPI** | **4.0 h** | **DONE** | **All 20 Pytest backend tests & all 32 acceptance tests** |
+| Backend Migration: Python FastAPI | 4.0 h | DONE | All 20 Pytest backend tests & all 32 acceptance tests |
+| **Professional Architecture Restructuring** | **2.0 h** | **DONE** | **Frontend Next.js build (0 errors) + 32/32 Acceptance + 20/20 Pytest** |
 
-Feature freeze after M5 observed: prevents new scope additions or out-of-scope features after M5, but planned milestones M6 (Buyer Portal), M7 (People & Finance), M8 (Overview & Polish), Final regression stage, and the required Python FastAPI backend migration proceed as scheduled.
+Feature freeze after M5 observed: prevents new scope additions or out-of-scope features after M5, but planned milestones M6 (Buyer Portal), M7 (People & Finance), M8 (Overview & Polish), Final regression stage, the required Python FastAPI backend migration, and the professional architecture restructuring proceed as scheduled.
+
+---
+
+## Professional Full-Stack Architecture Restructuring (Completed & Verified)
+
+| ID | Task | Acceptance criteria | Status | Result |
+|---|---|---|---|---|
+| ARCH-1 | Repository Audit & Migration Plan | Map frontend files, backend services, database files, and scripts; identify all path and import dependencies | DONE | PASS: Full inventory audited; safe migration plan executed |
+| ARCH-2 | Relocate Frontend to `frontend/` | Move Next.js application, components, hooks, lib, public assets, and config into `frontend/`; configure Turbopack root & `api-client.ts` | DONE | PASS: Next.js 16 build compiles with 0 TypeScript/Turbopack errors |
+| ARCH-3 | Organize Database Ownership in `database/` | Establish `database/` with `dev.db`, `dev.db.bak`, schema docs, and Alembic migration history | DONE | PASS: SQLite database verified; schema owned by SQLAlchemy 2.0 |
+| ARCH-4 | Backend Architecture Modularization | Confirm `backend/` with `app/` (routes, services, models, schemas, repositories, core, db), `alembic/`, `tests/` | DONE | PASS: All 20 Pytest backend tests pass in 1.19s |
+| ARCH-5 | Cross-Tier Testing & Build Verification | Verify Next.js production build in `frontend/`, acceptance suite in `scripts/`, and backend Pytest suite | DONE | PASS: 32 / 32 acceptance tests pass; 20 / 20 Pytest tests pass; Next.js builds clean |
+| ARCH-6 | Technical Documentation (`docs/architecture.md`) | Create comprehensive architecture specification with Mermaid diagrams, contracts, and directory map | DONE | PASS: Architecture documentation created in `docs/architecture.md` |
+| ARCH-7 | Clean Root Scripts & Environment Templates | Update `.gitignore`, `.env.example`, root `package.json` delegations, and root `README.md` | DONE | PASS: Secrets secured in `.gitignore`; reproducible commands documented in `README.md` |
 
 ---
 
