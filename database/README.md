@@ -9,11 +9,16 @@ All entity definitions, constraints, indexes, and relationships are declared in 
 
 ## Database Architecture
 
-- **Engine**: SQLite 3 with WAL mode support
-- **ORM**: SQLAlchemy 2.0 (Declarative Base)
-- **Active Data File**: `database/dev.db`
-- **Backup Snapshot**: `database/dev.db.bak`
-- **Timestamp Strategy**: Millisecond integer timestamps compatible with epoch time via `PrismaDateTime(TypeDecorator)` to ensure zero data corruption across legacy timestamps.
+- **Primary Cloud Database**: **TiDB Cloud Serverless** (MySQL 8.0 wire-compatible distributed SQL)
+  - **Host**: `gateway01.ap-northeast-1.prod.aws.tidbcloud.com`
+  - **Port**: `4000`
+  - **Username**: `3aSDDEtX2DMhV19.root`
+  - **Active Database**: `texflow` (561 rows across 22 production tables)
+  - **Connection URL**: `mysql+pymysql://3aSDDEtX2DMhV19.root:<password>@gateway01.ap-northeast-1.prod.aws.tidbcloud.com:4000/texflow?ssl_verify_cert=false&ssl_verify_identity=false`
+  - **System Database Note**: The cluster includes the default catalog `sys`. Full DDL and operations reside in the `texflow` schema.
+- **Local Fallback**: Embedded SQLite 3 (`database/dev.db` and backup `database/dev.db.bak`)
+- **ORM**: SQLAlchemy 2.0 (Declarative Base with dual SQLite and MySQL/TiDB dialect support)
+- **Timestamp Strategy**: Millisecond epoch timestamps stored as `BIGINT` (via `PrismaDateTime(TypeDecorator)`) providing cross-database consistency without data truncation.
 
 ---
 

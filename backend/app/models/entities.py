@@ -2,22 +2,30 @@ from datetime import datetime, timezone
 import uuid
 from sqlalchemy import (
     Column,
-    String,
     Float,
     Integer,
+    BigInteger,
     Boolean,
     ForeignKey,
     UniqueConstraint,
     TypeDecorator,
 )
+from sqlalchemy.types import String as BaseString
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+
+class String(BaseString):
+    """
+    Subclassed String with default length=191 to support MySQL, TiDB, and SQLite seamlessly.
+    """
+    def __init__(self, length=191, **kwargs):
+        super().__init__(length=length, **kwargs)
 
 def generate_id() -> str:
     return str(uuid.uuid4())
 
 class PrismaDateTime(TypeDecorator):
-    impl = Integer
+    impl = BigInteger
     cache_ok = True
 
     def process_bind_param(self, value, dialect):

@@ -7,7 +7,7 @@
 The system is organized into a clean, decoupled two-tier architecture:
 1. **Frontend (`frontend/`)**: Next.js 16 (App Router, Turbopack, Tailwind CSS, TypeScript) with the Stitch industrial UI design system.
 2. **Backend (`backend/`)**: Python 3.12, FastAPI, SQLAlchemy 2.0 ORM, Alembic migrations, and Pydantic validation.
-3. **Database (`database/`)**: Embedded SQLite 3 database (`database/dev.db`) managed via SQLAlchemy models with millisecond timestamp compatibility.
+3. **Database (`database/`)**: Primary distributed cloud database on **TiDB Cloud** (`gateway01.ap-northeast-1.prod.aws.tidbcloud.com:4000/texflow`) with local SQLite fallback (`database/dev.db`), managed via dialect-agnostic SQLAlchemy 2.0 models.
 
 ```mermaid
 graph TD
@@ -17,7 +17,8 @@ graph TD
     AuthLayer --> DomainServices["Domain Services (`services/`)"]
     DomainServices --> Repositories["Data Layer & Repositories (`repositories/`)"]
     Repositories --> SQLAlchemy["SQLAlchemy 2.0 ORM"]
-    SQLAlchemy --> SQLite[("SQLite Database (`database/dev.db`)")]
+    SQLAlchemy --> TiDB[("TiDB Cloud Serverless (AWS ap-northeast-1)")]
+    SQLAlchemy -.-> SQLite[("Local SQLite Fallback (`database/dev.db`)")]
 ```
 
 ---

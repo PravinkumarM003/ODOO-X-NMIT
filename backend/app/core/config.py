@@ -9,6 +9,8 @@ PRIMARY_DB_PATH = ROOT_DIR / "database" / "dev.db"
 FALLBACK_DB_PATH = ROOT_DIR / "prisma" / "dev.db"
 ACTIVE_DB_PATH = PRIMARY_DB_PATH if PRIMARY_DB_PATH.exists() else FALLBACK_DB_PATH
 
+TIDB_DB_URL = "mysql+pymysql://3aSDDEtX2DMhV19.root:K6erAQa24hXQCxwY@gateway01.ap-northeast-1.prod.aws.tidbcloud.com:4000/texflow?ssl_verify_cert=false&ssl_verify_identity=false"
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "TexFlow Textile Manufacturing Platform"
     API_V1_STR: str = "/api/v1"
@@ -16,7 +18,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     DATABASE_URL: str = os.getenv(
-        "DATABASE_URL", f"sqlite:///{ACTIVE_DB_PATH.as_posix()}"
+        "DATABASE_URL", TIDB_DB_URL
     )
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
