@@ -1,0 +1,311 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   // OWNER, OFFICE, FLOOR, BUYER
+  buyerId      String?
+  buyer        Buyer?   @relation(fields: [buyerId], references: [id])
+  createdAt    DateTime @default(now())
+}
+
+model Buyer {
+  id            String     @id @default(cuid())
+  name          String
+  contactPerson String
+  email         String
+  phone         String
+  address       String
+  users         User[]
+  orders        Order[]
+  dispatches    Dispatch[]
+}
+
+model Supplier {
+  id            String         @id @default(cuid())
+  name          String
+  contactPerson String
+  phone         String
+  lots          YarnLot[]
+  bills         SupplierBill[]
+}
+
+model FabricType {
+  id                   String   @id @default(cuid())
+  name                 String
+  gsm                  Int
+  widthCm              Int
+  yarnItemId           String
+  yarnItem             YarnItem @relation(fields: [yarnItemId], references: [id])
+  yarnKgPerMetre       Float
+  defaultPricePerMetre Float
+  orders               Order[]
+}
+
+model YarnItem {
+  id                 String          @id @default(cuid())
+  code               String          @unique
+  yarnType           String
+  count              String
+  colour             String
+  reorderThresholdKg Float
+  unit               String          @default("kg")
+  fabricTypes        FabricType[]
+  lots               YarnLot[]
+  stockMovements     StockMovement[]
+}
+
+model YarnLot {
+  id             String          @id @default(cuid())
+  lotCode        String          @unique
+  yarnItemId     String
+  yarnItem       YarnItem        @relation(fields: [yarnItemId], references: [id])
+  supplierId     String
+  supplier       Supplier        @relation(fields: [supplierId], references: [id])
+  receivedAt     DateTime        @default(now())
+  qtyReceivedKg  Float
+  unitCostPerKg  Float
+  linkedOrderId  String?
+  receivedBy     String
+  stockMovements StockMovement[]
+  supplierBills  SupplierBill[]
+}
+
+model StockMovement {
+  id         String    @id @default(cuid())
+  yarnItemId String
+  yarnItem   YarnItem  @relation(fields: [yarnItemId], references: [id])
+  lotId      String?
+  lot        YarnLot?  @relation(fields: [lotId], references: [id])
+  orderId    String?
+  order      Order?    @relation(fields: [orderId], references: [id])
+  type       String    // RECEIPT, RESERVE, RELEASE, CONSUME, ADJUST
+  qtyKg      Float     // magnitudes (>0) for RECEIPT, RESERVE, RELEASE, CONSUME; signed non-zero delta for ADJUST
+  reason     String
+  createdBy  String
+  createdAt  DateTime  @default(now())
+}
+
+model Order {
+  id               String          @id @default(cuid())
+  orderNo          String          @unique
+  buyerId          String
+  buyer            Buyer           @relation(fields: [buyerId], references: [id])
+  fabricTypeId     String
+  fabricType       FabricType      @relation(fields: [fabricTypeId], references: [id])
+  colour           String
+  qtyMetres        Float
+  deadline         DateTime
+  pricePerMetre    Float
+  status           String          // NEW, AWAITING_YARN, CONFIRMED, IN_PRODUCTION, IN_QC, READY_TO_SHIP, PARTIALLY_DISPATCHED, COMPLETED, CANCELLED
+  currentStage     String?         // SPINNING, WEAVING, DYEING
+  yarnRequiredKg   Float
+  shortageKg       Float           @default(0)
+  submittedByBuyer Boolean         @default(false)
+  reviewedBy       String?
+  reviewedAt       DateTime?
+  cancelReason     String?
+  cancelledAt      DateTime?
+  cancelledBy      String?
+  createdAt        DateTime        @default(now())
+  createdBy        String
+  workOrders       WorkOrder[]
+  rolls            Roll[]
+  dispatches       Dispatch[]
+  stockMovements   StockMovement[]
+  invoices         Invoice[]
+}
+
+model Machine {
+  id               String            @id @default(cuid())
+  code             String            @unique
+  type             String            // SPINNING, WEAVING, DYEING
+  status           String            // RUNNING, IDLE, BREAKDOWN, MAINTENANCE
+  hourlyRate       Float
+  workOrders       WorkOrder[]
+  downtimes        MachineDowntime[]
+  weavingRolls     Roll[]            @relation("WeavingMachine")
+  dyeingRolls      Roll[]            @relation("DyeingMachine")
+}
+
+model WorkOrder {
+  id                String          @id @default(cuid())
+  orderId           String
+  order             Order           @relation(fields: [orderId], references: [id])
+  stage             String          // SPINNING, WEAVING, DYEING
+  machineId         String?
+  machine           Machine?        @relation(fields: [machineId], references: [id])
+  plannedQtyMetres  Float
+  producedQtyMetres Float           @default(0)
+  status            String          // NOT_STARTED, IN_PROGRESS, COMPLETED, BLOCKED
+  startedAt         DateTime?
+  completedAt       DateTime?
+  productionLogs    ProductionLog[]
+
+  @@unique([orderId, stage])
+}
+
+model ProductionLog {
+  id          String    @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id])
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  qtyMetres   Float
+  hours       Float
+  shift       String    // MORNING, EVENING, NIGHT
+  loggedAt    DateTime  @default(now())
+}
+
+model MachineDowntime {
+  id        String    @id @default(cuid())
+  machineId String
+  machine   Machine   @relation(fields: [machineId], references: [id])
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  reason    String
+}
+
+model Roll {
+  id               String        @id @default(cuid())
+  rollNo           String        @unique
+  orderId          String
+  order            Order         @relation(fields: [orderId], references: [id])
+  weavingMachineId String?
+  weavingMachine   Machine?      @relation("WeavingMachine", fields: [weavingMachineId], references: [id])
+  dyeingMachineId  String?
+  dyeingMachine    Machine?      @relation("DyeingMachine", fields: [dyeingMachineId], references: [id])
+  lengthMetres     Float
+  qcStatus         String        // PENDING, PASSED, REWORK, REJECTED
+  stockStatus      String        // IN_STORE, DISPATCHED
+  createdAt        DateTime      @default(now())
+  qcRecords        QCRecord[]
+  dispatchLine     DispatchLine?
+}
+
+model QCRecord {
+  id             String    @id @default(cuid())
+  qcNo           String
+  rollId         String
+  roll           Roll      @relation(fields: [rollId], references: [id])
+  inspectorId    String?
+  inspectorName  String?
+  result         String    // PASSED, REWORK, REJECTED
+  defectType     String?   // HOLE, COLOUR_MISMATCH, UNEVEN_WEAVE, OTHER
+  severity       String?   // MINOR, MAJOR, CRITICAL
+  notes          String?
+  createdAt      DateTime  @default(now())
+}
+
+model Dispatch {
+  id           String         @id @default(cuid())
+  dispatchNo   String         @unique
+  orderId      String
+  order        Order          @relation(fields: [orderId], references: [id])
+  buyerId      String
+  buyer        Buyer          @relation(fields: [buyerId], references: [id])
+  truckNo      String
+  driverName   String
+  dispatchedAt DateTime       @default(now())
+  dispatchedBy String
+  lines        DispatchLine[]
+  invoice      Invoice?
+}
+
+model DispatchLine {
+  id           String   @id @default(cuid())
+  dispatchId   String
+  dispatch     Dispatch @relation(fields: [dispatchId], references: [id])
+  rollId       String   @unique
+  roll         Roll     @relation(fields: [rollId], references: [id])
+  lengthMetres Float
+}
+
+model Invoice {
+  id         String    @id @default(cuid())
+  invoiceNo  String    @unique
+  orderId    String
+  order      Order     @relation(fields: [orderId], references: [id])
+  dispatchId String    @unique
+  dispatch   Dispatch  @relation(fields: [dispatchId], references: [id])
+  amount     Float
+  issuedAt   DateTime  @default(now())
+  status     String    // UNPAID, PARTIAL, PAID
+  payments   Payment[]
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  invoiceId  String
+  invoice    Invoice  @relation(fields: [invoiceId], references: [id])
+  amount     Float
+  receivedAt DateTime @default(now())
+  method     String   // BANK, CASH, UPI
+  reference  String?
+}
+
+model SupplierBill {
+  id         String    @id @default(cuid())
+  billNo     String    @unique
+  supplierId String
+  supplier   Supplier  @relation(fields: [supplierId], references: [id])
+  lotId      String?
+  lot        YarnLot?  @relation(fields: [lotId], references: [id])
+  amount     Float
+  billedAt   DateTime  @default(now())
+  status     String    // UNPAID, PAID
+  paidAt     DateTime?
+}
+
+model Employee {
+  id                  String          @id @default(cuid())
+  empNo               String          @unique
+  name                String
+  department          String          // SPINNING, WEAVING, DYEING, STORE, QC, OFFICE
+  jobTitle            String
+  dailyWage           Float
+  overtimeRatePerHour Float
+  active              Boolean         @default(true)
+  productionLogs      ProductionLog[]
+  attendances         Attendance[]
+  wageSummaries       WageSummary[]
+}
+
+model Attendance {
+  id            String   @id @default(cuid())
+  employeeId    String
+  employee      Employee @relation(fields: [employeeId], references: [id])
+  date          String   // YYYY-MM-DD
+  shift         String   // MORNING, EVENING, NIGHT
+  status        String   // PRESENT, ABSENT, LEAVE
+  overtimeHours Float    @default(0)
+
+  @@unique([employeeId, date])
+}
+
+model WageSummary {
+  id               String    @id @default(cuid())
+  employeeId       String
+  employee         Employee  @relation(fields: [employeeId], references: [id])
+  month            String    // YYYY-MM
+  daysPresent      Int
+  overtimeHours    Float
+  amount           Float
+  closedAt         DateTime
+  closedBy         String
+  paidAt           DateTime?
+  paidAmount       Float?
+  paymentMethod    String?
+  paymentReference String?
+
+  @@unique([employeeId, month])
+}
