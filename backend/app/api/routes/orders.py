@@ -175,7 +175,7 @@ def get_order_detail(
         "rolls": [
             {
                 "id": r.id,
-                "rollNo": r.rollNo,
+                "rollNo": r.rollNo,                                                     
                 "lengthMetres": r.lengthMetres,
                 "qcStatus": r.qcStatus,
                 "stockStatus": r.stockStatus,

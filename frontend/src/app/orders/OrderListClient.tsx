@@ -251,12 +251,12 @@ export default function OrderListClient({
                   <td className="py-3 px-4 min-w-[120px]">
                     <div className="flex items-center justify-between text-[11px] mb-1 font-mono-id">
                       <span className="text-[#617078]">Production:</span>
-                      <span className="font-bold text-[#202B32]">{o.progress.productionProgressPercent}%</span>
+                      <span className="font-bold text-[#202B32]">{o.progress?.productionProgressPercent ?? 0}%</span>
                     </div>
                     <div className="w-full bg-[#E5EAE8] h-1.5 rounded-full overflow-hidden">
                       <div
                         className="bg-[#176B63] h-full rounded-full transition-all"
-                        style={{ width: `${o.progress.productionProgressPercent}%` }}
+                        style={{ width: `${o.progress?.productionProgressPercent ?? 0}%` }}
                       ></div>
                     </div>
                   </td>
@@ -264,11 +264,11 @@ export default function OrderListClient({
                   {/* 2. QC Readiness (BR-25) */}
                   <td className="py-3 px-4 min-w-[130px]">
                     <div className="text-[11px] font-semibold text-[#202B32]">
-                      {o.progress.qcReadiness.statusText}
+                      {o.progress && o.progress.qcReadiness ? o.progress.qcReadiness.statusText : "Pending"}
                     </div>
-                    {o.progress.qcReadiness.qcResolvedPercent !== null && (
+                    {o.progress?.qcReadiness?.qcResolvedPercent !== null && o.progress?.qcReadiness?.qcResolvedPercent !== undefined && (
                       <div className="text-[10px] text-[#617078] mt-0.5 font-mono-id">
-                        {o.progress.qcReadiness.passedCount} pass / {o.progress.qcReadiness.reworkCount} rwk / {o.progress.qcReadiness.rejectedCount} rej
+                        {o.progress?.qcReadiness?.passedCount ?? 0} pass / {o.progress?.qcReadiness?.reworkCount ?? 0} rwk / {o.progress?.qcReadiness?.rejectedCount ?? 0} rej
                       </div>
                     )}
                   </td>
@@ -276,17 +276,17 @@ export default function OrderListClient({
                   {/* 3. Dispatch Completion (BR-25) */}
                   <td className="py-3 px-4 min-w-[130px]">
                     <div className="text-[11px] font-semibold text-[#202B32]">
-                      {o.progress.dispatchCompletion.summaryText}
+                      {o.progress && o.progress.dispatchCompletion ? o.progress.dispatchCompletion.summaryText : `0% dispatched`}
                     </div>
                     <div className="w-full bg-[#E5EAE8] h-1.5 rounded-full overflow-hidden mt-1">
                       <div
                         className="bg-[#277653] h-full rounded-full transition-all"
-                        style={{ width: `${o.progress.dispatchCompletion.dispatchPercent}%` }}
+                        style={{ width: `${o.progress?.dispatchCompletion?.dispatchPercent ?? 0}%` }}
                       ></div>
                     </div>
-                    {o.progress.dispatchCompletion.shortfallNote && (
+                    {o.progress?.dispatchCompletion?.shortfallNote && (
                       <div className="text-[10px] text-[#B44545] font-semibold mt-0.5">
-                        {o.progress.dispatchCompletion.shortfallNote}
+                        {o.progress?.dispatchCompletion?.shortfallNote}
                       </div>
                     )}
                   </td>

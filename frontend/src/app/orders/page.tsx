@@ -34,7 +34,11 @@ export default async function OrdersPage() {
     status: ord.status,
     submittedByBuyer: ord.submittedByBuyer,
     risk: ord.risk,
-    progress: ord.progress,
+    progress: ord.progress || {
+      productionProgressPercent: 0,
+      qcReadiness: { statusText: "Pending", qcResolvedPercent: null, passedCount: 0, reworkCount: 0, rejectedCount: 0 },
+      dispatchCompletion: { summaryText: "0 m dispatched", dispatchPercent: 0, shortfallNote: null },
+    },
   }));
 
   const fabricOptions = (formData.fabricTypes || []).map((ft: any) => ({

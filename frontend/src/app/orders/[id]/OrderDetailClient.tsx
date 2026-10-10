@@ -232,17 +232,17 @@ export default function OrderDetailClient({
               1. Production Progress
             </span>
             <span className="font-mono-id font-bold text-[#176B63]">
-              {progress.productionProgressPercent}%
+              {progress?.productionProgressPercent ?? progress?.production ?? 0}%
             </span>
           </div>
           <div className="w-full bg-[#E5EAE8] h-2 rounded-full overflow-hidden mb-2">
             <div
               className="bg-[#176B63] h-full rounded-full transition-all"
-              style={{ width: `${progress.productionProgressPercent}%` }}
+              style={{ width: `${progress?.productionProgressPercent ?? progress?.production ?? 0}%` }}
             ></div>
           </div>
           <p className="text-[11px] text-[#617078]">
-            Produced: {progress.totalProducedMetres} m of {progress.totalPlannedMetres} m across all stages.
+            Produced: {progress?.totalProducedMetres ?? 0} m of {progress?.totalPlannedMetres ?? 0} m across all stages.
           </p>
         </div>
 
@@ -253,16 +253,16 @@ export default function OrderDetailClient({
               2. QC Readiness
             </span>
             <span className="font-mono-id font-bold text-[#54758A]">
-              {progress.qcReadiness.qcResolvedPercent !== null
+              {progress?.qcReadiness?.qcResolvedPercent !== null && progress?.qcReadiness?.qcResolvedPercent !== undefined
                 ? `${progress.qcReadiness.qcResolvedPercent}%`
                 : "Pending"}
             </span>
           </div>
           <div className="text-xs font-semibold text-[#202B32] mb-1">
-            {progress.qcReadiness.statusText}
+            {progress?.qcReadiness?.statusText || "Pending"}
           </div>
           <p className="text-[11px] text-[#617078]">
-            Registered rolls: {progress.qcReadiness.registeredRollCount} ({progress.qcReadiness.registeredRollMetres} m)
+            Registered rolls: {progress?.qcReadiness?.registeredRollCount ?? 0} ({progress?.qcReadiness?.registeredRollMetres ?? 0} m)
           </p>
         </div>
 
@@ -273,13 +273,13 @@ export default function OrderDetailClient({
               3. Dispatch Completion
             </span>
             <span className="font-mono-id font-bold text-[#277653]">
-              {progress.dispatchCompletion.dispatchPercent}%
+              {progress?.dispatchCompletion?.dispatchPercent ?? progress?.dispatch ?? 0}%
             </span>
           </div>
           <div className="text-xs font-semibold text-[#202B32] mb-1">
-            {progress.dispatchCompletion.summaryText}
+            {progress?.dispatchCompletion?.summaryText || `${progress?.dispatch ?? 0}% dispatched`}
           </div>
-          {progress.dispatchCompletion.shortfallNote ? (
+          {progress?.dispatchCompletion?.shortfallNote ? (
             <p className="text-[11px] text-[#B44545] font-semibold">
               {progress.dispatchCompletion.shortfallNote}
             </p>
