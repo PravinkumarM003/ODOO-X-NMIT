@@ -6,6 +6,8 @@ import { getComputedNotifications } from "@/services/notificationService";
 import AppShell from "@/components/layout/AppShell";
 import OrderListClient from "./OrderListClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function OrdersPage() {
   const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
   const notifications = await getComputedNotifications();

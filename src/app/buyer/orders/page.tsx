@@ -23,6 +23,8 @@ export function getBuyerStatusWording(status: string, currentStage?: string | nu
   return status;
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function BuyerOrdersPage() {
   const session = await requireSession();
   if (session.role !== "BUYER" || !session.buyerId) {

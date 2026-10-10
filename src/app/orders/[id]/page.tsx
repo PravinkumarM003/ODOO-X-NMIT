@@ -7,6 +7,8 @@ import AppShell from "@/components/layout/AppShell";
 import OrderDetailClient from "./OrderDetailClient";
 import { notFound } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+
 export default async function OrderDetailPage({
   params,
 }: {

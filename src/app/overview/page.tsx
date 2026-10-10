@@ -5,6 +5,8 @@ import { calculateOrderRisk } from "@/services/financeService";
 import AppShell from "@/components/layout/AppShell";
 import OverviewClient from "./OverviewClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function OverviewPage() {
   const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
   const notifications = await getComputedNotifications();

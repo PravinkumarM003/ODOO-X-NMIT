@@ -5,6 +5,8 @@ import { getComputedNotifications } from "@/services/notificationService";
 import AppShell from "@/components/layout/AppShell";
 import DispatchClient from "./DispatchClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function DispatchPage() {
   const user = await requireRole(["OWNER", "OFFICE"]);
   const notifications = await getComputedNotifications();

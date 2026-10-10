@@ -4,6 +4,8 @@ import { getComputedNotifications } from "@/services/notificationService";
 import AppShell from "@/components/layout/AppShell";
 import PeopleClient from "./PeopleClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function PeoplePage({
   searchParams,
 }: {

@@ -7,6 +7,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Layers, History, PackageCheck, AlertCircle } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function YarnItemDetailPage({
   params,
 }: {

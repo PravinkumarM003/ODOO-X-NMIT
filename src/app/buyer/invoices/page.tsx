@@ -4,6 +4,8 @@ import AppShell from "@/components/layout/AppShell";
 import { redirect } from "next/navigation";
 import { FileText, CheckCircle2 } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function BuyerInvoicesPage() {
   const session = await requireSession();
   if (session.role !== "BUYER" || !session.buyerId) {

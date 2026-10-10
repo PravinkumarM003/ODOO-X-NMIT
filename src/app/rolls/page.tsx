@@ -4,6 +4,8 @@ import { getComputedNotifications } from "@/services/notificationService";
 import AppShell from "@/components/layout/AppShell";
 import RollsQCClient from "./RollsQCClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function RollsQCPage() {
   const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
   const notifications = await getComputedNotifications();

@@ -5,6 +5,8 @@ import { getComputedNotifications } from "@/services/notificationService";
 import AppShell from "@/components/layout/AppShell";
 import YarnStoreClient from "./YarnStoreClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function YarnStorePage() {
   const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
   const notifications = await getComputedNotifications();
@@ -30,7 +32,6 @@ export default async function YarnStorePage() {
 
   const orders = await prisma.order.findMany({
     where: { status: { in: ["AWAITING_YARN", "CONFIRMED", "IN_PRODUCTION"] } },
-    include: { buyer: true },
     select: { id: true, orderNo: true, buyer: { select: { name: true } } },
     orderBy: { orderNo: "asc" },
   });

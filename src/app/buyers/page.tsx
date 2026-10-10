@@ -5,6 +5,8 @@ import AppShell from "@/components/layout/AppShell";
 import Link from "next/link";
 import { Users2, Phone, Mail, MapPin, FileText, ArrowRight } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function BuyersPage() {
   const user = await requireRole(["OWNER", "OFFICE"]);
   const notifications = await getComputedNotifications();

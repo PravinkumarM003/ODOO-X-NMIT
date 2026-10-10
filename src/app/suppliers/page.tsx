@@ -5,6 +5,8 @@ import AppShell from "@/components/layout/AppShell";
 import { Factory, Phone, CheckCircle, Clock } from "lucide-react";
 import { markSupplierBillPaidAction } from "@/app/actions/buyerSupplierActions";
 
+export const dynamic = "force-dynamic";
+
 export default async function SuppliersPage() {
   const user = await requireRole(["OWNER", "OFFICE"]);
   const notifications = await getComputedNotifications();
@@ -21,6 +23,11 @@ export default async function SuppliersPage() {
     },
     orderBy: { name: "asc" },
   });
+
+  async function handleMarkBillPaid(formData: FormData) {
+    "use server";
+    await markSupplierBillPaidAction(formData);
+  }
 
   return (
     <AppShell user={user} notifications={notifications}>
@@ -94,7 +101,7 @@ export default async function SuppliersPage() {
                           </td>
                           <td className="py-2.5 px-3 text-right">
                             {bill.status === "UNPAID" ? (
-                              <form action={markSupplierBillPaidAction} className="inline-block">
+                              <form action={handleMarkBillPaid} className="inline-block">
                                 <input type="hidden" name="billId" value={bill.id} />
                                 <button
                                   type="submit"

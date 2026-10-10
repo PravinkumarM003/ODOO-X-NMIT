@@ -5,6 +5,8 @@ import AppShell from "@/components/layout/AppShell";
 import FinanceClient from "./FinanceClient";
 import Forbidden from "@/components/common/Forbidden";
 
+export const dynamic = "force-dynamic";
+
 export default async function FinancePage({
   searchParams,
 }: {
