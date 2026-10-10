@@ -1,16 +1,9 @@
 "use server";
 
-import { requireRole } from "@/lib/auth";
-import {
-  markAttendance,
-  closeMonthWages,
-  markWagesPaid,
-} from "@/services/financeService";
+import { apiClient } from "@/lib/apiClient";
 import { revalidatePath } from "next/cache";
 
 export async function markAttendanceAction(formData: FormData) {
-  await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-
   const employeeId = formData.get("employeeId") as string;
   const date = formData.get("date") as string;
   const shift = formData.get("shift") as "MORNING" | "EVENING" | "NIGHT";
@@ -22,7 +15,7 @@ export async function markAttendanceAction(formData: FormData) {
   if (!employeeId || !date) return { error: "Employee and date are required" };
 
   try {
-    await markAttendance({
+    await apiClient.post("/finance/attendance", {
       employeeId,
       date,
       shift: shift || "MORNING",
@@ -40,13 +33,11 @@ export async function markAttendanceAction(formData: FormData) {
 }
 
 export async function closeMonthWagesAction(formData: FormData) {
-  const user = await requireRole(["OWNER"]);
-
   const month = formData.get("month") as string;
   if (!month) return { error: "Month YYYY-MM is required" };
 
   try {
-    await closeMonthWages(month, user.name);
+    await apiClient.post("/finance/wages/close", { month });
 
     revalidatePath("/people");
     revalidatePath("/finance");
@@ -58,8 +49,6 @@ export async function closeMonthWagesAction(formData: FormData) {
 }
 
 export async function markWagesPaidAction(formData: FormData) {
-  await requireRole(["OWNER"]);
-
   const month = formData.get("month") as string;
   const employeeId = (formData.get("employeeId") as string) || undefined;
   const paidAtStr = formData.get("paidAt") as string;
@@ -69,18 +58,21 @@ export async function markWagesPaidAction(formData: FormData) {
   if (!month) return { error: "Month is required" };
 
   try {
-    const count = await markWagesPaid({
-      month,
-      employeeId,
-      paidAt: paidAtStr ? new Date(paidAtStr) : new Date(),
-      paymentMethod,
-      paymentReference,
-    });
+    const res = await apiClient.post<{ success: boolean; count: number }>(
+      "/finance/wages/pay",
+      {
+        month,
+        employeeId,
+        paidAt: paidAtStr || null,
+        paymentMethod,
+        paymentReference,
+      }
+    );
 
     revalidatePath("/people");
     revalidatePath("/finance");
 
-    return { success: true, count };
+    return { success: true, count: res.count };
   } catch (err: any) {
     return { error: err.message };
   }

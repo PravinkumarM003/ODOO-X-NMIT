@@ -1,7 +1,7 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
-import { createSession, destroySession, verifyPassword, SessionUser } from "@/lib/auth";
+import { apiClient, ApiError } from "@/lib/apiClient";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 export async function loginAction(formData: FormData) {
@@ -12,38 +12,49 @@ export async function loginAction(formData: FormData) {
     return { error: "Please enter both email and password" };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
+  try {
+    const data = await apiClient.post<{
+      success: boolean;
+      token: string;
+      user: {
+        userId: string;
+        email: string;
+        name: string;
+        role: string;
+        buyerId: string | null;
+      };
+      redirectUrl: string;
+    }>("/auth/login", { email, password });
 
-  if (!user) {
-    return { error: "Invalid credentials: user not found" };
-  }
+    const cookieStore = await cookies();
+    cookieStore.set("texflow_session", data.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    });
 
-  const isValid = await verifyPassword(password, user.passwordHash);
-  if (!isValid) {
-    return { error: "Invalid credentials: password incorrect" };
-  }
-
-  const sessionUser: SessionUser = {
-    userId: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role as any,
-    buyerId: user.buyerId,
-  };
-
-  await createSession(sessionUser);
-
-  // Redirect based on role
-  if (user.role === "BUYER") {
-    redirect("/buyer/orders");
-  } else {
-    redirect("/overview");
+    if (data.redirectUrl) {
+      redirect(data.redirectUrl);
+    }
+    return { success: true };
+  } catch (err: any) {
+    // Next.js redirect throws NEXT_REDIRECT which must not be caught as an error
+    if (err?.message?.includes("NEXT_REDIRECT")) {
+      throw err;
+    }
+    return { error: err.message || "Login failed" };
   }
 }
 
 export async function logoutAction() {
-  await destroySession();
+  try {
+    await apiClient.post("/auth/logout");
+  } catch {
+    // Ignore error on logout call
+  }
+  const cookieStore = await cookies();
+  cookieStore.delete("texflow_session");
   redirect("/login");
 }

@@ -1,24 +1,42 @@
 "use server";
 
-import { requireRole } from "@/lib/auth";
-import {
-  createOrder,
-  reviewBuyerOrder,
-  cancelOrder,
-  calculateYarnRequirement,
-} from "@/services/orderService";
+import { apiClient } from "@/lib/apiClient";
 import { revalidatePath } from "next/cache";
+
+export interface CreateOrderResult {
+  success?: boolean;
+  error?: string;
+  orderId?: string;
+  orderNo?: string;
+  status?: string;
+}
+
+export interface ReviewOrderResult {
+  success?: boolean;
+  error?: string;
+  status?: string;
+}
+
+export interface CancelOrderResult {
+  success?: boolean;
+  error?: string;
+  status?: string;
+}
 
 export async function checkYarnAvailabilityAction(fabricTypeId: string, qtyMetres: number) {
   if (!fabricTypeId || isNaN(qtyMetres) || qtyMetres <= 0) {
     return null;
   }
-  return calculateYarnRequirement(fabricTypeId, qtyMetres);
+  try {
+    return await apiClient.get<any>(
+      `/orders/check-yarn?fabricTypeId=${fabricTypeId}&qtyMetres=${qtyMetres}`
+    );
+  } catch {
+    return null;
+  }
 }
 
-export async function createOrderAction(formData: FormData) {
-  const user = await requireRole(["OWNER", "OFFICE"]);
-
+export async function createOrderAction(formData: FormData): Promise<CreateOrderResult> {
   const buyerId = formData.get("buyerId") as string;
   const fabricTypeId = formData.get("fabricTypeId") as string;
   const colour = (formData.get("colour") as string)?.trim();
@@ -35,14 +53,13 @@ export async function createOrderAction(formData: FormData) {
   if (!deadlineStr) return { error: "Deadline is required" };
 
   try {
-    const order = await createOrder({
+    const res = await apiClient.post<CreateOrderResult>("/orders", {
       buyerId,
       fabricTypeId,
       colour,
       qtyMetres,
-      deadline: new Date(deadlineStr),
+      deadline: deadlineStr,
       pricePerMetre,
-      createdBy: user.name,
       submittedByBuyer: false,
     });
 
@@ -50,20 +67,13 @@ export async function createOrderAction(formData: FormData) {
     revalidatePath("/yarn");
     revalidatePath("/overview");
 
-    return {
-      success: true,
-      orderId: order.id,
-      orderNo: order.orderNo,
-      status: order.status,
-    };
+    return res;
   } catch (err: any) {
     return { error: err.message };
   }
 }
 
-export async function reviewBuyerOrderAction(formData: FormData) {
-  const user = await requireRole(["OWNER", "OFFICE"]);
-
+export async function reviewBuyerOrderAction(formData: FormData): Promise<ReviewOrderResult> {
   const orderId = formData.get("orderId") as string;
   const action = formData.get("action") as "APPROVE" | "CANCEL";
   const adjustedPrice = formData.get("adjustedPricePerMetre")
@@ -77,30 +87,23 @@ export async function reviewBuyerOrderAction(formData: FormData) {
   }
 
   try {
-    const updated = await reviewBuyerOrder({
-      orderId,
+    const res = await apiClient.post<ReviewOrderResult>(`/orders/${orderId}/review`, {
       action,
       adjustedPricePerMetre: adjustedPrice,
       cancelReason,
-      reviewedBy: user.name,
     });
 
     revalidatePath(`/orders/${orderId}`);
     revalidatePath("/orders");
     revalidatePath("/overview");
 
-    return {
-      success: true,
-      status: updated.status,
-    };
+    return res;
   } catch (err: any) {
     return { error: err.message };
   }
 }
 
-export async function cancelOrderAction(formData: FormData) {
-  const user = await requireRole(["OWNER", "OFFICE"]);
-
+export async function cancelOrderAction(formData: FormData): Promise<CancelOrderResult> {
   const orderId = formData.get("orderId") as string;
   const cancelReason = (formData.get("cancelReason") as string)?.trim();
 
@@ -110,17 +113,15 @@ export async function cancelOrderAction(formData: FormData) {
   }
 
   try {
-    const cancelled = await cancelOrder({
-      orderId,
+    const res = await apiClient.post<CancelOrderResult>(`/orders/${orderId}/cancel`, {
       cancelReason,
-      cancelledBy: user.name,
     });
 
     revalidatePath(`/orders/${orderId}`);
     revalidatePath("/orders");
     revalidatePath("/overview");
 
-    return { success: true, status: cancelled.status };
+    return res;
   } catch (err: any) {
     return { error: err.message };
   }

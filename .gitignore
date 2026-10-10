@@ -43,4 +43,13 @@ next-env.d.ts
 # SQLite database
 prisma/*.db
 prisma/*.db-journal
+prisma/*.db.bak
 dev.db
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+backend/.pytest_cache/
+backend/**/__pycache__/
+

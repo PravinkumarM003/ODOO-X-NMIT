@@ -11,24 +11,37 @@ TexFlow is an industrial web application designed for Everest Textile Mills to r
 ## 1. Quick Start & Run Instructions
 
 ### Prerequisites
+- Python 3.10+ (tested on Python 3.12)
 - Node.js (v18.17+ or v20+)
 - npm (v9+)
 
-### Installation & Launch
+### A. Python FastAPI Backend
 ```bash
-# 1. Install dependencies
+# 1. Navigate to backend directory
+cd backend
+
+# 2. Install Python dependencies
+pip install -r requirements.txt
+
+# 3. Run automated Pytest test suite (all 20 backend tests)
+python -m pytest -v
+
+# 4. Start the FastAPI backend server on port 8000
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+- API Root: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- OpenAPI Interactive Documentation: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- Health Check: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
+
+### B. Next.js Frontend
+```bash
+# 1. Install Node dependencies (from repository root)
 npm install
 
-# 2. Push schema to local SQLite database
-npx prisma db push
-
-# 3. Populate deterministic seed dataset with automated self-check
-npm run seed
-
-# 4. Run automated acceptance test suite (Tests 1 to 32)
+# 2. Run automated acceptance test suite (Tests 1 to 32)
 npm test
 
-# 5. Start development server
+# 3. Start Next.js development server
 npm run dev
 ```
 
@@ -158,6 +171,8 @@ To demonstrate how TexFlow eliminates paper across the mill, follow this 5-step 
 
 ## 6. Architecture & Business Rules Enforced
 
+- **Genuine Python Backend**: Python 3.12 + FastAPI + Pydantic + SQLAlchemy 2.x + Alembic + bcrypt + Pytest serving all textile business workflows.
+- **Frontend Architecture**: Next.js 16 + TypeScript + Tailwind CSS with a typed `apiClient` forwarding JWT session cookies to FastAPI REST endpoints.
 - **Database Invariants (BR-02)**: On-hand = `Σ RECEIPT − Σ CONSUME + Σ ADJUST`, Available = `On-hand − Reserved`. Negative stock and zero deltas are rejected inside database transactions.
 - **Stage Order (BR-08)**: Spinning → Weaving → Dyeing → QC. Stage skipping is blocked by server validation.
 - **Order Status Function (BR-16)**: Centralized server function `recomputeOrderStatus(orderId)` called in transaction after every QC inspection and dispatch. Prevents illegal manual status overrides.

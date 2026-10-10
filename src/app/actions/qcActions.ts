@@ -1,12 +1,22 @@
 "use server";
 
-import { requireRole } from "@/lib/auth";
-import { registerRolls, inspectRoll } from "@/services/qcService";
+import { apiClient } from "@/lib/apiClient";
 import { revalidatePath } from "next/cache";
 
-export async function registerRollsAction(formData: FormData) {
-  const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
+export interface RegisterRollsResult {
+  success?: boolean;
+  error?: string;
+  count?: number;
+}
 
+export interface InspectRollResult {
+  success?: boolean;
+  error?: string;
+  rollNo?: string;
+  status?: string;
+}
+
+export async function registerRollsAction(formData: FormData): Promise<RegisterRollsResult> {
   const orderId = formData.get("orderId") as string;
   const lengthsJson = formData.get("lengthsJson") as string;
 
@@ -16,11 +26,13 @@ export async function registerRollsAction(formData: FormData) {
     const lengths: number[] = JSON.parse(lengthsJson || "[]");
     if (!lengths.length) return { error: "Please provide at least one roll length" };
 
-    const rolls = await registerRolls({
-      orderId,
-      rolls: lengths.map((l) => ({ lengthMetres: l })),
-      registeredBy: user.name,
-    });
+    const res = await apiClient.post<RegisterRollsResult>(
+      "/rolls/register",
+      {
+        orderId,
+        rolls: lengths.map((l) => ({ lengthMetres: l })),
+      }
+    );
 
     revalidatePath("/rolls");
     revalidatePath("/orders");
@@ -28,15 +40,13 @@ export async function registerRollsAction(formData: FormData) {
     revalidatePath("/production");
     revalidatePath("/overview");
 
-    return { success: true, count: rolls.length };
+    return res;
   } catch (err: any) {
     return { error: err.message };
   }
 }
 
-export async function inspectRollAction(formData: FormData) {
-  const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-
+export async function inspectRollAction(formData: FormData): Promise<InspectRollResult> {
   const rollId = formData.get("rollId") as string;
   const result = formData.get("result") as "PASSED" | "REWORK" | "REJECTED";
   const defectType = formData.get("defectType") as any;
@@ -54,14 +64,12 @@ export async function inspectRollAction(formData: FormData) {
   }
 
   try {
-    const updatedRoll = await inspectRoll({
+    const res = await apiClient.post<InspectRollResult>(`/rolls/${rollId}/inspect`, {
       rollId,
       result,
       defectType: result === "PASSED" ? null : defectType,
       severity: result === "PASSED" ? null : severity,
       notes: notes || null,
-      inspectorId: user.userId,
-      inspectorName: user.name,
     });
 
     revalidatePath("/rolls");
@@ -69,7 +77,7 @@ export async function inspectRollAction(formData: FormData) {
     revalidatePath("/orders");
     revalidatePath("/overview");
 
-    return { success: true, rollNo: updatedRoll.rollNo, status: updatedRoll.qcStatus };
+    return res;
   } catch (err: any) {
     return { error: err.message };
   }

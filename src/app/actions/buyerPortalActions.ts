@@ -1,15 +1,16 @@
 "use server";
 
-import { requireSession } from "@/lib/auth";
-import { createOrder } from "@/services/orderService";
+import { apiClient } from "@/lib/apiClient";
 import { revalidatePath } from "next/cache";
 
-export async function requestBuyerOrderAction(formData: FormData) {
-  const session = await requireSession();
-  if (session.role !== "BUYER" || !session.buyerId) {
-    return { error: "Only buyer accounts can request buyer orders" };
-  }
+export interface RequestBuyerOrderResult {
+  success?: boolean;
+  error?: string;
+  orderId?: string;
+  orderNo?: string;
+}
 
+export async function requestBuyerOrderAction(formData: FormData): Promise<RequestBuyerOrderResult> {
   const fabricTypeId = formData.get("fabricTypeId") as string;
   const colour = (formData.get("colour") as string)?.trim();
   const qtyMetres = parseFloat(formData.get("qtyMetres") as string);
@@ -21,25 +22,18 @@ export async function requestBuyerOrderAction(formData: FormData) {
   if (!deadlineStr) return { error: "Deadline is required" };
 
   try {
-    const order = await createOrder({
-      buyerId: session.buyerId,
+    const res = await apiClient.post<RequestBuyerOrderResult>("/buyer/orders", {
       fabricTypeId,
       colour,
       qtyMetres,
-      deadline: new Date(deadlineStr),
-      createdBy: session.name,
-      submittedByBuyer: true, // Flags submittedByBuyer = true (BR-24)
+      deadline: deadlineStr,
     });
 
     revalidatePath("/buyer/orders");
     revalidatePath("/orders");
     revalidatePath("/overview");
 
-    return {
-      success: true,
-      orderId: order.id,
-      orderNo: order.orderNo,
-    };
+    return res;
   } catch (err: any) {
     return { error: err.message };
   }

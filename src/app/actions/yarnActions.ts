@@ -1,13 +1,22 @@
 "use server";
 
-import { requireRole } from "@/lib/auth";
-import { receiveYarn, adjustStock } from "@/services/yarnService";
-import { autoAllocateYarn } from "@/services/orderService";
+import { apiClient } from "@/lib/apiClient";
 import { revalidatePath } from "next/cache";
 
-export async function receiveYarnAction(formData: FormData) {
-  const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
+export interface ReceiveYarnResult {
+  success?: boolean;
+  error?: string;
+  lotCode?: string;
+  qtyReceivedKg?: number;
+  releasedOrders?: Array<{ orderNo: string; orderId?: string; qtyMetres?: number }>;
+}
 
+export interface AdjustStockResult {
+  success?: boolean;
+  error?: string;
+}
+
+export async function receiveYarnAction(formData: FormData): Promise<ReceiveYarnResult> {
   const lotCode = (formData.get("lotCode") as string)?.trim().toUpperCase();
   const yarnItemId = formData.get("yarnItemId") as string;
   const supplierId = formData.get("supplierId") as string;
@@ -24,39 +33,28 @@ export async function receiveYarnAction(formData: FormData) {
   if (isNaN(unitCostPerKg) || unitCostPerKg < 0) return { error: "Unit cost must be valid" };
 
   try {
-    const lot = await receiveYarn({
+    const res = await apiClient.post<ReceiveYarnResult>("/yarn/receive", {
       lotCode,
       yarnItemId,
       supplierId,
       qtyReceivedKg,
       unitCostPerKg,
       linkedOrderId,
-      receivedBy: user.name,
       createSupplierBill,
       billAmount,
     });
-
-    // BR-06: Auto-allocate awaiting orders
-    const releasedOrders = await autoAllocateYarn(yarnItemId, user.name);
 
     revalidatePath("/yarn");
     revalidatePath("/orders");
     revalidatePath("/overview");
 
-    return {
-      success: true,
-      lotCode: lot.lotCode,
-      qtyReceivedKg,
-      releasedOrders,
-    };
+    return res;
   } catch (err: any) {
     return { error: err.message };
   }
 }
 
-export async function adjustStockAction(formData: FormData) {
-  const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-
+export async function adjustStockAction(formData: FormData): Promise<AdjustStockResult> {
   const lotId = formData.get("lotId") as string;
   const deltaKg = parseFloat(formData.get("deltaKg") as string);
   const reason = (formData.get("reason") as string)?.trim();
@@ -66,11 +64,10 @@ export async function adjustStockAction(formData: FormData) {
   if (!reason || reason.length < 3) return { error: "A valid reason (minimum 3 characters) is required" };
 
   try {
-    await adjustStock({
+    await apiClient.post("/yarn/adjust", {
       lotId,
       deltaKg,
       reason,
-      adjustedBy: user.name,
     });
 
     revalidatePath("/yarn");

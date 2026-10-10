@@ -20,8 +20,24 @@ Single source of truth for progress. Source specification: `TexFlow_Build_Prompt
 | M7 People, cost, finance | 2.5 h | DONE | 19, 20, 27, 28 |
 | M8 Overview, notifications, polish | 2.0 h | DONE | 21, 22, full cross-screen Test 25 |
 | Final: regression, demo, critical fixes | 2.5 h | DONE | all 1 to 32 |
+| **Backend Migration: Python FastAPI** | **4.0 h** | **DONE** | **All 20 Pytest backend tests & all 32 acceptance tests** |
 
-Feature freeze after M5 observed: prevents new scope additions or out-of-scope features after M5, but planned milestones M6 (Buyer Portal), M7 (People & Finance), M8 (Overview & Polish) and the Final regression stage proceed as scheduled.
+Feature freeze after M5 observed: prevents new scope additions or out-of-scope features after M5, but planned milestones M6 (Buyer Portal), M7 (People & Finance), M8 (Overview & Polish), Final regression stage, and the required Python FastAPI backend migration proceed as scheduled.
+
+---
+
+## Python FastAPI Backend Migration (Completed & Verified)
+
+| ID | Task | Acceptance criteria | Status | Result |
+|---|---|---|---|---|
+| PY-1 | Repository Audit & Database Preservation | SQLite database backed up to `prisma/dev.db.bak`; 22 tables mapped; 7 demo accounts & password hashes verified | DONE | PASS: dev.db preserved; table structure & bcrypt password hashes verified |
+| PY-2 | Backend Foundation & Architecture | FastAPI app, SQLAlchemy 2.0 session, Alembic migrations initialized, config, security (bcrypt & JWT), dependencies | DONE | PASS: `alembic current` code 0; app initialized with CORS & JWT cookie/header support |
+| PY-3 | SQLAlchemy Models & Interoperability | All 22 database entities mapped with `PrismaDateTime` TypeDecorator for millisecond timestamp interoperability | DONE | PASS: SQLAlchemy models query and write to SQLite with zero schema divergence |
+| PY-4 | Python Business Services Migration | Migrate yarn, orderStatus, progress, order, production, qc, dispatch, finance, notification, overview services | DONE | PASS: All BR-01 to BR-26 rules implemented natively in Python services |
+| PY-5 | Pydantic Schemas & FastAPI Endpoints | Strict validation schemas & 15 route groups mounted under `/api/v1` (/auth, /yarn, /orders, /production, /rolls, /dispatch, /finance, /people, /buyers, /suppliers, /overview, /notifications, /buyer) | DONE | PASS: All 15 endpoints return HTTP 200 on live uvicorn server; `/health` healthy; `/docs` available |
+| PY-6 | Frontend typed API client & Action Wiring | Create `src/lib/apiClient.ts` with token forwarding; delegate all server actions (`authActions`, `yarnActions`, `orderActions`, `productionActions`, `qcActions`, `dispatchActions`, `financeActions`, `buyerSupplierActions`, `buyerPortalActions`) to FastAPI | DONE | PASS: Next.js server actions invoke FastAPI; `next build` passes in 1.4s with 0 errors |
+| PY-7 | Automated Backend Tests Suite | Pytest test suite covering auth, RBAC, yarn, orders, production, QC, dispatch, finance, overview, buyer portal | DONE | PASS: 20 / 20 Pytest tests PASSED in 0.92s |
+| PY-8 | End-to-End Regression Verification | Run full acceptance test suite against database and verify Next.js integration | DONE | PASS: 32 / 32 Acceptance tests PASSED (0 failures) |
 
 ---
 
@@ -147,3 +163,4 @@ Note: the auto-allocation of BR-06 needs orders, so its hook is wired in M2-3.
 | M7 | People, attendance register, Owner finance, wages | Tests 19, 20, 27, 28: PASS | None | M8 Overview & polish |
 | M8 | Overview dashboard, notifications bell, responsive pass, cross-screen check | Tests 21, 22, full cross-screen Test 25: PASS | None | Final regression |
 | Final | Full regression runner, build optimization, documentation | Tests 1 to 32: ALL 32 PASSED (0 FAIL) | None | Complete |
+| **PY** | **Full Python FastAPI backend migration, SQLAlchemy 2.0 ORM, Alembic migrations, Pytest suite, Next.js API client integration** | **Pytest 20/20 PASSED; Acceptance 32/32 PASSED; Next.js build clean** | **None** | **Production ready** |

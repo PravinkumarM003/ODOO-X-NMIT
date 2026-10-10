@@ -1,20 +1,9 @@
 "use server";
 
-import { requireRole } from "@/lib/auth";
-import {
-  assignMachineToWorkOrder,
-  logProductionOutput,
-  completeSpinningStage,
-  completeStage,
-  reportMachineBreakdown,
-  resolveMachineBreakdown,
-  reassignBlockedWorkOrder,
-} from "@/services/productionService";
+import { apiClient } from "@/lib/apiClient";
 import { revalidatePath } from "next/cache";
 
 export async function assignMachineAction(formData: FormData) {
-  const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-
   const workOrderId = formData.get("workOrderId") as string;
   const machineId = formData.get("machineId") as string;
 
@@ -23,10 +12,9 @@ export async function assignMachineAction(formData: FormData) {
   }
 
   try {
-    await assignMachineToWorkOrder({
+    await apiClient.post("/production/assign", {
       workOrderId,
       machineId,
-      assignedBy: user.name,
     });
 
     revalidatePath("/production");
@@ -40,8 +28,6 @@ export async function assignMachineAction(formData: FormData) {
 }
 
 export async function logOutputAction(formData: FormData) {
-  await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-
   const workOrderId = formData.get("workOrderId") as string;
   const employeeId = formData.get("employeeId") as string;
   const qtyMetres = parseFloat(formData.get("qtyMetres") as string);
@@ -55,7 +41,7 @@ export async function logOutputAction(formData: FormData) {
   if (!["MORNING", "EVENING", "NIGHT"].includes(shift)) return { error: "Invalid shift" };
 
   try {
-    await logProductionOutput({
+    await apiClient.post("/production/log-output", {
       workOrderId,
       employeeId,
       qtyMetres,
@@ -74,8 +60,6 @@ export async function logOutputAction(formData: FormData) {
 }
 
 export async function completeStageAction(formData: FormData) {
-  const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-
   const workOrderId = formData.get("workOrderId") as string;
   const stage = formData.get("stage") as string;
   const actualKgUsed = formData.get("actualKgUsed")
@@ -85,18 +69,11 @@ export async function completeStageAction(formData: FormData) {
   if (!workOrderId) return { error: "Work order is required" };
 
   try {
-    if (stage === "SPINNING") {
-      await completeSpinningStage({
-        workOrderId,
-        actualKgUsed,
-        completedBy: user.name,
-      });
-    } else {
-      await completeStage({
-        workOrderId,
-        completedBy: user.name,
-      });
-    }
+    await apiClient.post("/production/complete-stage", {
+      workOrderId,
+      stage,
+      actualKgUsed,
+    });
 
     revalidatePath("/production");
     revalidatePath("/orders");
@@ -110,8 +87,6 @@ export async function completeStageAction(formData: FormData) {
 }
 
 export async function reportBreakdownAction(formData: FormData) {
-  await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-
   const machineId = formData.get("machineId") as string;
   const reason = (formData.get("reason") as string)?.trim();
 
@@ -119,7 +94,7 @@ export async function reportBreakdownAction(formData: FormData) {
   if (!reason || reason.length < 3) return { error: "Reason for breakdown is required (min 3 chars)" };
 
   try {
-    await reportMachineBreakdown({ machineId, reason });
+    await apiClient.post("/production/breakdown", { machineId, reason });
 
     revalidatePath("/production");
     revalidatePath("/orders");
@@ -132,13 +107,11 @@ export async function reportBreakdownAction(formData: FormData) {
 }
 
 export async function resolveBreakdownAction(formData: FormData) {
-  await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-
   const machineId = formData.get("machineId") as string;
   if (!machineId) return { error: "Machine ID is required" };
 
   try {
-    await resolveMachineBreakdown(machineId);
+    await apiClient.post("/production/resolve-breakdown", { machineId });
 
     revalidatePath("/production");
     revalidatePath("/orders");
@@ -151,15 +124,13 @@ export async function resolveBreakdownAction(formData: FormData) {
 }
 
 export async function reassignWorkOrderAction(formData: FormData) {
-  await requireRole(["OWNER", "OFFICE", "FLOOR"]);
-
   const workOrderId = formData.get("workOrderId") as string;
   const newMachineId = formData.get("newMachineId") as string;
 
   if (!workOrderId || !newMachineId) return { error: "Work order and replacement machine are required" };
 
   try {
-    await reassignBlockedWorkOrder({
+    await apiClient.post("/production/reassign", {
       workOrderId,
       newMachineId,
     });
