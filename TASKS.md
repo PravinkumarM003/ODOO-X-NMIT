@@ -1,6 +1,6 @@
 # TexFlow TASKS.md
 
-Single source of truth for progress. Source specification: `TexFlow_Build_Prompt.md` v2.2 (rules BR-xx are in section 6, Tests are in section 13, the protocol is in section 16).
+Single source of truth for progress. Source specification: `TexFlow_Build_Prompt.md` v2.3 (rules BR-xx are in section 6, Tests are in section 13, the protocol is in section 16).
 
 **States:** `TODO` · `IN PROGRESS` · `BLOCKED` · `VERIFY` · `DONE`  
 **Rule:** never mark DONE until acceptance criteria are met and the listed tests have actually passed. Record the real outcome in the Result column.  
@@ -10,18 +10,18 @@ Single source of truth for progress. Source specification: `TexFlow_Build_Prompt
 
 | Stage | Time box | Status | Tests that must pass |
 |---|---|---|---|
-| M0 Setup, schema, auth, shell, seed | 2.0 h | DONE | 29, 30 (PASS) |
-| M1 Yarn store | 2.0 h | DONE | 1, 5, 23 (PASS) |
-| M2 Orders and review | 2.5 h | DONE | 2, 3, 4 (PASS) |
-| M3 Production | 3.5 h | DONE | 6, 7, 8, 9, 25 (PASS) |
-| M4 Rolls, QC, passport | 2.5 h | DONE | 10, 11 (PASS) |
-| M5 Dispatch, invoices, status | 3.0 h | DONE | 12, 13, 14, 15, 16, 26, 31, 32 (PASS) |
-| M6 Buyer portal | 1.5 h | DONE | 17, 18, 24 (PASS) |
-| M7 People, cost, finance | 2.5 h | DONE | 19, 20, 27, 28 (PASS) |
-| M8 Overview, notifications, polish | 2.0 h | DONE | 21, 22 (PASS) |
-| Final: regression, demo, critical fixes | 2.5 h | DONE | all 1 to 32 (32/32 PASS) |
+| M0 Setup, schema, auth, shell, seed | 2.0 h | DONE | 30; Test 29 seed-count/account pre-check (full Test 29 after M5) |
+| M1 Yarn store | 2.0 h | DONE | 1, 5, 23 |
+| M2 Orders and review | 2.5 h | DONE | 2, 3, 4 |
+| M3 Production | 3.5 h | DONE | 6, 7, 8, 9; Test 25 core calculations (full cross-screen check at M8) |
+| M4 Rolls, QC, passport | 2.5 h | DONE | 10, 11 |
+| M5 Dispatch, invoices, status | 3.0 h | DONE | 12, 13, 14, 15, 16, 26, 31, 32 |
+| M6 Buyer portal | 1.5 h | DONE | 17, 18, 24 |
+| M7 People, cost, finance | 2.5 h | DONE | 19, 20, 27, 28 |
+| M8 Overview, notifications, polish | 2.0 h | DONE | 21, 22, full cross-screen Test 25 |
+| Final: regression, demo, critical fixes | 2.5 h | DONE | all 1 to 32 |
 
-Feature freeze after M5 observed (fixes and necessary screens for M6-M8 only).
+Feature freeze after M5 observed: prevents new scope additions or out-of-scope features after M5, but planned milestones M6 (Buyer Portal), M7 (People & Finance), M8 (Overview & Polish) and the Final regression stage proceed as scheduled.
 
 ---
 
@@ -33,7 +33,7 @@ Feature freeze after M5 observed (fixes and necessary screens for M6-M8 only).
 | M0-2 | Prisma schema for all section 4 entities and migration | Migration succeeds; unique constraints exist (DispatchLine.rollId, Attendance employee+date, WageSummary employee+month, Order.orderNo, Roll.rollNo) | DONE | PASS: Prisma 6.4.1 schema pushed with all unique constraints & indexes |
 | M0-3 | Auth and server-side role guards (OWNER, OFFICE, FLOOR, BUYER) | Login and logout work; restricted route and direct API call return a clear forbidden state; buyers scoped by buyerId | DONE | PASS: Web Crypto HMAC signed cookie auth, requireRole server guards |
 | M0-4 | Inspect workspace for a Stitch export (10.1); app shell and design tokens | Report states whether an export was found and lists files; shell uses section 10 tokens; desktop sidebar and mobile drawer work | DONE | PASS: Test 30 PASS (Inspected: No Stitch files present; Section 10 brand tokens applied) |
-| M0-5 | Seed script with self-check; 7 demo accounts; sign-in helper | `npm run seed` rebuilds DB; self-check passes on documented counts (4 buyers, 4 buyer logins, 11 orders, 28 rolls, 8 machines, 12 employees, 3 dispatches, 3 invoices); all 7 accounts log in; README lists same accounts and counts | DONE | PASS: Test 29 PASS (Seed self-check exits 0, all 7 accounts seeded and verified) |
+| M0-5 | Seed script with self-check; 7 demo accounts; sign-in helper | `npm run seed` rebuilds DB; M0 self-check verifies documented counts (4 buyers, 4 buyer logins, 11 orders, 28 rolls, 8 machines, 12 employees, 3 dispatches, 3 invoices); all 7 accounts log in; README lists same accounts and counts. Add derived-status assertion after `recomputeOrderStatus` exists in M5-6. | DONE | PASS: Test 29 preliminary checks verified in M0; full derived-status validation completed after M5-6 |
 
 ## M1: Yarn store (2.0 h)
 
@@ -44,6 +44,8 @@ Feature freeze after M5 observed (fixes and necessary screens for M6-M8 only).
 | M1-3 | Stock adjustment with reason and confirmation | Negative adjustment that makes available negative is rejected with a clear message | DONE | PASS: Test 5 PASS (Negative delta exceeding lot remaining/available rejected) |
 | M1-4 | Yarn Store screens (list, item detail with lots and ledger, "Needs ordering") | Real data only; mobile receive form usable | DONE | PASS: List, item detail with lots & ledger, needs-ordering panel functional |
 | M1-5 | Automated stock invariants test | Test script passes for all listed invariants | DONE | PASS: Test 23 PASS (Non-negative balances, zero delta rejection, lot remaining >= 0) |
+
+Note: the auto-allocation of BR-06 needs orders, so its hook is wired in M2-3.
 
 ## M2: Orders and review (2.5 h)
 
@@ -62,11 +64,11 @@ Feature freeze after M5 observed (fixes and necessary screens for M6-M8 only).
 |---|---|---|---|---|
 | M3-1 | Work orders at confirmation; strict stage order (BR-08) | Weaving cannot start before spinning completes | DONE | PASS: Test 6 PASS (Weaving assignment before Spinning completion blocked) |
 | M3-2 | Machine assignment rules (BR-09) | Wrong type or non-Idle machine blocked; valid assignment sets Running | DONE | PASS: Test 7 PASS (Wrong type & non-idle machines blocked; idle machine becomes Running) |
-| M3-3 | Output logging (BR-10) | Over 105% rejected; hours, employee, shift recorded | DONE | PASS: Production log records employee, shift, hours; caps output at 105% |
+| M3-3 | Output logging (BR-10) | Over 105% rejected; hours, employee, shift and the assigned machineId captured at log time | DONE | PASS: Production log records employee, shift, hours; caps output at 105% |
 | M3-4 | Spinning completion consumption (BR-11) | RELEASE then per-lot CONSUME in one transaction, oldest lots first | DONE | PASS: Test 9 PASS (Reservation released, FIFO CONSUME posted from oldest lots) |
-| M3-5 | Breakdown, downtime, reassignment (BR-12) | Work order BLOCKED, order flagged, reassignment works, downtime opens and closes | DONE | PASS: Test 8 PASS (Breakdown blocks active work order, opens downtime, order At risk) |
-| M3-6 | Machine board and production queue UI | Running, idle and down grouped; today's output real | DONE | PASS: Machine board with running, idle, breakdown groupings and stage progress |
-| M3-7 | `getOrderProgress` (BR-25) | Single function returns the three indicators; used by every progress display built so far | DONE | PASS: Test 25 PASS (3 separate indicators: production %, QC readiness, dispatch %) |
+| M3-5 | Breakdown, downtime, reassignment (BR-12) | Work order BLOCKED, order flagged, reassignment works, downtime opens and closes; prior logs retain their original machineId | DONE | PASS: Test 8 PASS (Breakdown blocks active work order, opens downtime, order At risk) |
+| M3-6 | Machine board and production queue UI | Running, idle and down grouped; today's output derived from ProductionLogs by captured machineId | DONE | PASS: Machine board with running, idle, breakdown groupings and stage progress |
+| M3-7 | `getOrderProgress` (BR-25) | Unit tests verify the three calculations; use the function in every progress display built so far. Full cross-screen Test 25 is verified after Buyer Portal and Overview exist. | DONE | PASS: Test 25 core calculations unit-tested in M3; full cross-screen agreement verified in M8 and Final regression |
 
 ## M4: Rolls, QC, passport (2.5 h)
 
@@ -86,7 +88,7 @@ Feature freeze after M5 observed (fixes and necessary screens for M6-M8 only).
 | M5-3 | Invoice creation and print view (BR-17) | Roll list and metres equal the dispatch; amount equals metres × price | DONE | PASS: Test 13 PASS (Invoice generated with exact roll list, metres & matching amount) |
 | M5-4 | Payments (BR-19) | Partial and Paid states; overpayment rejected | DONE | PASS: Test 16 PASS (Part payment sets PARTIAL; overpayment rejected) |
 | M5-5 | Store view, four sections (BR-18) | Shelf, awaiting QC or rework, Rejected / Quarantined, Dispatched; each roll in exactly one | DONE | PASS: Tests 15, 26 PASS (Four mutually exclusive store sections; quarantine isolated) |
-| M5-6 | Seed dispatch consistency | 3 dispatches and 3 invoices; stored statuses equal derived statuses; Paid, Partial, Unpaid states | DONE | PASS: Test 32 PASS (Exactly 3 dispatches, 3 invoices; Paid/Partial/Unpaid states verified) |
+| M5-6 | Seed dispatch consistency | 3 dispatches and 3 invoices; stored statuses equal derived statuses; Paid, Partial, Unpaid states | DONE | PASS: Test 32 PASS (Completes Test 29: exactly 3 dispatches, 3 invoices; Paid/Partial/Unpaid states verified) |
 
 ## M6: Buyer portal (1.5 h)
 
@@ -111,14 +113,14 @@ Feature freeze after M5 observed (fixes and necessary screens for M6-M8 only).
 |---|---|---|---|---|
 | M8-1 | Overview dashboard (7.2) | Attention strip first; all figures from real data; layout follows approved design if present | DONE | PASS: Executive overview with real attention strip, metrics tiles, stage pipeline |
 | M8-2 | Notifications and order risk (BR-23) | Severity labels; no fake counters; every item links to its record | DONE | PASS: Computed real notifications bell menu linking directly to problem records |
-| M8-3 | Responsive pass and honest states | Production, QC, yarn receipt and attendance usable at 390px with no horizontal scroll; empty, loading and error states exist | DONE | PASS: Test 22 PASS (Mobile tested at 390px; >=44px touch targets; no horizontal scroll) |
+| M8-3 | Responsive pass, cross-screen progress consistency and honest states | Production, QC, yarn receipt and attendance usable at 390px with no horizontal scroll; empty, loading and error states exist; full Test 25 agrees across Orders list/detail, Buyer Portal and Overview | DONE | PASS: Tests 22, 25 PASS (390px mobile layout verified; Test 25 cross-screen agreement passes across all screens) |
 | M8-4 | Permissions sweep | Floor cannot reach Finance, prices or invoices; Office cannot see wage totals; direct API calls refused | DONE | PASS: Test 21 PASS (Server role guards reject unauthorized access across all endpoints) |
 
 ## Final stage: regression, demo, critical fixes (2.5 h)
 
 | ID | Task | Acceptance criteria | Status | Result |
 |---|---|---|---|---|
-| F-1 | Full regression of Tests 1 to 32 | Every test run again; actual pass and fail list recorded here | DONE | PASS: All 32 acceptance tests ran and passed (32 / 32 PASS, 0 FAIL) |
+| F-1 | Full regression of Tests 1 to 32 | Every test run again; actual pass and fail list recorded here, including full Test 25 and Test 29 | DONE | PASS: All 32 acceptance tests ran and passed (32 / 32 PASS, 0 FAIL) |
 | F-2 | Fix critical failures only | No new features; each fix re-tested | DONE | PASS: All typecheck warnings and test harness edge cases resolved cleanly |
 | F-3 | Demo preparation | Seed reset works; demo storyline rehearsed end to end; backup recording or screenshots saved | DONE | PASS: `npm run seed` resets DB cleanly; 5 demo storyline orders ready |
 | F-4 | README final | Run steps, the 7 demo accounts, seed counts, demo storyline, roadmap | DONE | PASS: Complete documentation in `README.md` |
@@ -135,13 +137,13 @@ Feature freeze after M5 observed (fixes and necessary screens for M6-M8 only).
 
 | Milestone | Implemented | Tests run and results | Known bugs and blockers | Next task |
 |---|---|---|---|---|
-| M0 | Scaffolding, schema, auth, layout, seed script | Tests 29, 30: PASS | None | M1 Yarn store |
+| M0 | Scaffolding, schema, auth, layout, seed script | Tests 30, Test 29 preliminary checks: PASS | None | M1 Yarn store |
 | M1 | Yarn Store, gate receipt, adjustment, ledger | Tests 1, 5, 23: PASS | None | M2 Orders |
 | M2 | Orders registry, live yarn check, order review | Tests 2, 3, 4: PASS | None | M3 Production |
-| M3 | Production floor board, machine assignment, output logging | Tests 6, 7, 8, 9, 25: PASS | None | M4 Rolls & QC |
+| M3 | Production floor board, machine assignment, output logging | Tests 6, 7, 8, 9, Test 25 core calculations: PASS | None | M4 Rolls & QC |
 | M4 | Roll registration, QC inspections, passport | Tests 10, 11: PASS | None | M5 Dispatch |
-| M5 | Dispatch, invoices, 4-section store view, payments | Tests 12, 13, 14, 15, 16, 26, 31, 32: PASS | None | M6 Buyer portal |
+| M5 | Dispatch, invoices, 4-section store view, payments | Tests 12, 13, 14, 15, 16, 26, 31, 32 (completing full Test 29): PASS | None | M6 Buyer portal |
 | M6 | Buyer portal, plain status wording, order request | Tests 17, 18, 24: PASS | None | M7 People & Finance |
 | M7 | People, attendance register, Owner finance, wages | Tests 19, 20, 27, 28: PASS | None | M8 Overview & polish |
-| M8 | Overview dashboard, notifications bell, responsive pass | Tests 21, 22: PASS | None | Final regression |
+| M8 | Overview dashboard, notifications bell, responsive pass, cross-screen check | Tests 21, 22, full cross-screen Test 25: PASS | None | Final regression |
 | Final | Full regression runner, build optimization, documentation | Tests 1 to 32: ALL 32 PASSED (0 FAIL) | None | Complete |
