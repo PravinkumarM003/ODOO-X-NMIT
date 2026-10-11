@@ -1,14 +1,15 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 
-export type Role = "OWNER" | "OFFICE" | "FLOOR" | "BUYER";
-
+export type Role = "ADMINISTRATOR" | "MANAGER" | "BUYER" | "PRODUCTION_SUPERVISOR" | "MECHANIC" | "INSPECTION_SUPERVISOR" | "DISPATCH_OFFICER";
 export interface SessionUser {
   userId: string;
   email: string;
   name: string;
   role: Role;
   buyerId?: string | null;
+  avatarUrl?: string | null;
 }
 
 const SESSION_COOKIE = "texflow_session";
@@ -60,7 +61,7 @@ export async function createSession(user: SessionUser): Promise<void> {
 
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, token, {
-    httpOnly: true,
+    httpOnly: false,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
@@ -91,6 +92,7 @@ export async function getSession(): Promise<SessionUser | null> {
         name: payload.name,
         role: payload.role as Role,
         buyerId: payload.buyerId || null,
+        avatarUrl: payload.avatarUrl || null,
       };
     } else if (parts.length === 2) {
       // Legacy 2-part signed token
@@ -115,9 +117,36 @@ export async function requireSession(): Promise<SessionUser> {
 }
 
 export async function requireRole(allowedRoles: Role[]): Promise<SessionUser> {
-  const session = await requireSession();
-  if (!allowedRoles.includes(session.role)) {
-    throw new Error(`FORBIDDEN: Role ${session.role} does not have access`);
+  const session = await getSession();
+  if (!session) {
+    redirect("/login");
+  }
+
+  let userRole = session.role;
+  if ((userRole as string) === "OWNER") userRole = "ADMINISTRATOR";
+  if ((userRole as string) === "OFFICE") userRole = "MANAGER";
+
+  const isAllowed =
+    userRole === "ADMINISTRATOR" ||
+    session.role === "ADMINISTRATOR" ||
+    allowedRoles.includes(userRole) ||
+    allowedRoles.includes(session.role);
+
+  if (!isAllowed) {
+    if (session.role === "BUYER") {
+      redirect("/buyer/orders");
+    } else if (session.role === "PRODUCTION_SUPERVISOR" || session.role === "MECHANIC") {
+      redirect("/production");
+    } else if (session.role === "INSPECTION_SUPERVISOR") {
+      redirect("/rolls");
+    } else if (session.role === "DISPATCH_OFFICER") {
+      redirect("/dispatch");
+    } else if (userRole === "ADMINISTRATOR" || userRole === "MANAGER") {
+      redirect("/overview");
+    } else {
+      redirect("/profile");
+    }
   }
   return session;
 }
+

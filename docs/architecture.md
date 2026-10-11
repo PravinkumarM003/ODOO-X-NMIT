@@ -89,7 +89,7 @@ flowchart LR
 ```
 
 1. **Yarn Inventory**: Gate receipts, lot allocations, ledger movements, and stock health thresholds (Healthy, Low, Critical, Out of Stock).
-2. **Buyer Orders**: Requirement calculation (1.05 waste allowance), automated FIFO lot reservation, and Office review workflow.
+2. **Buyer Orders**: Requirement calculation (1.05 waste allowance), automated FIFO lot reservation, and Manager review workflow.
 3. **Production Pipeline**: Sequential Work Orders (Knitting &rarr; Dyeing &rarr; Finishing) with 95%–105% output tolerance enforcement, machine assignments, and breakdown reassignments.
 4. **Quality Control**: Fabric roll inspection with 4-point defect grading (`PASSED`, `REJECTED`, `QUARANTINED`, `PENDING_REVIEW`).
 5. **Dispatch**: Store management where only `PASSED` rolls in store are dispatch-eligible.
@@ -104,7 +104,7 @@ Authentication is secured via:
 - **Password Hashing**: Industry-standard `bcrypt` password verification.
 - **Tokens**: HS256 JWT access tokens transmitted via standard HTTP Authorization Bearer headers or HTTP-only cookies (`texflow_session`).
 - **Role Permissions**:
-  - `OWNER`: Full system access across all manufacturing and financial operations.
-  - `OFFICE`: Order reviews, inventory management, dispatch approvals, invoices, and supplier bills.
+  - `ADMINISTRATOR`: Full system access across all manufacturing and financial operations.
+  - `MANAGER`: Order reviews, inventory management, dispatch approvals, invoices, and supplier bills.
   - `FLOOR`: Production machine logging, stage completion, defect logging, and roll inspection.
   - `BUYER`: Data-isolated Buyer Portal access for personal orders, deliveries, and invoices.

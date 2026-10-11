@@ -24,7 +24,7 @@ router = APIRouter(prefix="/finance", tags=["Finance & Wages"])
 def get_finance_data(
     month: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER"])),
 ):
     if not month:
         now = datetime.now(timezone.utc)
@@ -41,7 +41,7 @@ def get_finance_data(
 def mark_attendance_endpoint(
     req: MarkAttendanceRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE", "FLOOR"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "INSPECTION_SUPERVISOR", "MECHANIC", "DISPATCH_OFFICER"])),
 ):
     try:
         att = mark_attendance(
@@ -51,8 +51,13 @@ def mark_attendance_endpoint(
             shift=req.shift,
             status=req.status,
             overtime_hours=req.overtimeHours or 0.0,
+            check_in=req.checkIn,
+            check_out=req.checkOut,
+            user_role=current_user.role,
         )
         return {"success": True, "attendanceId": att.id}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -61,7 +66,7 @@ def mark_attendance_endpoint(
 def close_month_wages_endpoint(
     req: CloseMonthWagesRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER"])),
+    current_user=Depends(require_role(["ADMINISTRATOR"])),
 ):
     try:
         wages = close_month_wages(
@@ -78,7 +83,7 @@ def close_month_wages_endpoint(
 def mark_wages_paid_endpoint(
     req: MarkWagesPaidRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER"])),
+    current_user=Depends(require_role(["ADMINISTRATOR"])),
 ):
     try:
         paid_at = datetime.fromisoformat(req.paidAt.replace("Z", "+00:00")) if req.paidAt else datetime.now(timezone.utc)

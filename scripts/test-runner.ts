@@ -670,7 +670,7 @@ async function main() {
     assert(floorUser?.role === "FLOOR", "Floor user role is FLOOR");
 
     const ownerUser = await prisma.user.findUnique({ where: { email: "owner@everest.demo" } });
-    assert(ownerUser?.role === "OWNER", "Owner user role is OWNER");
+    assert(ownerUser?.role === "ADMINISTRATOR", "Owner user role is ADMINISTRATOR");
 
     const isValid = await verifyPassword("everest2026", floorUser!.passwordHash);
     assert(isValid, "Password hash verification succeeds for demo credentials");

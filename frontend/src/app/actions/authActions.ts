@@ -28,7 +28,7 @@ export async function loginAction(formData: FormData) {
 
     const cookieStore = await cookies();
     cookieStore.set("texflow_session", data.token, {
-      httpOnly: true,
+      httpOnly: false,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
@@ -38,7 +38,7 @@ export async function loginAction(formData: FormData) {
     if (data.redirectUrl) {
       redirect(data.redirectUrl);
     }
-    return { success: true };
+    return { success: true, token: data.token };
   } catch (err: any) {
     // Next.js redirect throws NEXT_REDIRECT which must not be caught as an error
     if (err?.message?.includes("NEXT_REDIRECT")) {

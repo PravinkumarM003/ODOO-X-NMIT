@@ -109,8 +109,8 @@ A one-click demo login helper is embedded on the `/login` screen. Every password
 
 | # | Role | Email | Password | Scoping / Description |
 |---|---|---|---|---|
-| 1 | **OWNER** | `owner@everest.demo` | `everest2026` | Full factory access, finance, cost margins, wage closure and payment marking |
-| 2 | **OFFICE** | `office@everest.demo` | `everest2026` | Buyers, suppliers, orders, review panel, invoices, payments, attendance |
+| 1 | **ADMINISTRATOR** | `administrator@everest.demo` | `everest2026` | Full factory access, finance, cost margins, wage closure and payment marking |
+| 2 | **MANAGER** | `manager@everest.demo` | `everest2026` | Buyers, suppliers, orders, review panel, invoices, payments, attendance |
 | 3 | **FLOOR** | `floor@everest.demo` | `everest2026` | Yarn store receipt & adjust, production output, machine assignment & breakdown, roll registration, QC inspection |
 | 4 | **BUYER** | `buyer.madras@everest.demo` | `everest2026` | Madras Cotton Guild: Scoped orders, self-submit orders, view own invoices and rolls |
 | 5 | **BUYER** | `buyer.coimbatore@everest.demo` | `everest2026` | Coimbatore Weaving Hub: Scoped portal access |
@@ -130,7 +130,7 @@ A one-click demo login helper is embedded on the `/login` screen. Every password
 7. **BR-15 to BR-17**: Only `PASSED` rolls in store are dispatch-eligible. Creating a dispatch generates a matching invoice.
 8. **BR-18 / BR-19**: 4-section store view with payment recording and outstanding balance tracking.
 9. **BR-20 to BR-23**: Shift attendance, monthly wage computation, and order costing with actual yarn and labor costs.
-10. **BR-24**: Office review of buyer-submitted orders with real-time yarn shortage checks.
+10. **BR-24**: Manager review of buyer-submitted orders with real-time yarn shortage checks.
 11. **BR-25 / BR-26**: Three distinct progress indicators (Production, QC, Dispatch) and strict separation of actual cash flows from outstanding obligations.
 
 ---

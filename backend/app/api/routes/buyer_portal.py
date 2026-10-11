@@ -45,22 +45,57 @@ def get_buyer_status_wording(status: str, current_stage: Optional[str] = None) -
 
 @router.get("/orders")
 def get_buyer_orders(
+    search: Optional[str] = None,
+    sort_by: Optional[str] = "createdAt",
+    sort_order: Optional[str] = "desc",
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["BUYER"])),
+    current_user=Depends(require_role(["BUYER", "ADMINISTRATOR", "MANAGER"])),
 ):
-    if not current_user.buyerId:
-        raise HTTPException(status_code=403, detail="User is not linked to any buyer entity")
+    query = select(Order)
+    if current_user.role == "BUYER":
+        if not current_user.buyerId:
+            raise HTTPException(status_code=403, detail="User is not linked to any buyer entity")
+        query = query.where(Order.buyerId == current_user.buyerId)
+    
+    if search:
+        search_term = f"%{search.lower()}%"
+        from sqlalchemy import func, or_
+        query = query.where(
+            or_(
+                func.lower(Order.orderNo).like(search_term),
+                func.lower(Order.colour).like(search_term)
+            )
+        )
+    
+    from sqlalchemy.orm import selectinload
+    sort_col_map = {
+        "orderNo": Order.orderNo,
+        "qtyMetres": Order.qtyMetres,
+        "deadline": Order.deadline,
+        "status": Order.status,
+        "createdAt": Order.createdAt,
+    }
+    target_col = sort_col_map.get(sort_by, Order.createdAt)
+    direction = sort_order.lower() if sort_order else "desc"
+    order_clause = target_col.asc() if direction == "asc" else target_col.desc()
 
-    buyer = db.execute(select(Buyer).where(Buyer.id == current_user.buyerId)).scalar_one_or_none()
-    orders = db.execute(
-        select(Order)
-        .where(Order.buyerId == current_user.buyerId)
-        .order_by(Order.createdAt.desc())
-    ).scalars().all()
+    query = query.order_by(order_clause, Order.id.desc())
+    
+    query = query.options(
+        selectinload(Order.fabricType),
+        selectinload(Order.workOrders),
+        selectinload(Order.rolls)
+    )
+
+    from sqlalchemy import func
+    total = db.scalar(select(func.count()).select_from(query.with_only_columns(Order.id).subquery()))
+    orders = db.execute(query.offset((page - 1) * page_size).limit(page_size)).scalars().all()
 
     orders_data = []
     for ord in orders:
-        progress = get_order_progress(db, ord.id)
+        progress = get_order_progress(db=db, order=ord)
         buyer_status_text = get_buyer_status_wording(ord.status, ord.currentStage)
 
         orders_data.append({
@@ -78,6 +113,7 @@ def get_buyer_orders(
         })
 
     fabric_types = db.execute(select(FabricType).order_by(FabricType.name.asc())).scalars().all()
+    buyer = db.get(Buyer, current_user.buyerId) if getattr(current_user, "buyerId", None) else None
 
     return {
         "orders": orders_data,
@@ -86,6 +122,9 @@ def get_buyer_orders(
             for f in fabric_types
         ],
         "buyerName": buyer.name if buyer else current_user.name,
+        "total": total,
+        "page": page,
+        "pageSize": page_size
     }
 
 
@@ -93,14 +132,15 @@ def get_buyer_orders(
 def get_buyer_order_detail(
     id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["BUYER"])),
+    current_user=Depends(require_role(["BUYER", "ADMINISTRATOR", "MANAGER"])),
 ):
-    if not current_user.buyerId:
-        raise HTTPException(status_code=403, detail="User is not linked to any buyer entity")
-
     ord = db.execute(select(Order).where(Order.id == id)).scalar_one_or_none()
-    if not ord or ord.buyerId != current_user.buyerId:
+    if not ord:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    if current_user.role == "BUYER":
+        if not current_user.buyerId or ord.buyerId != current_user.buyerId:
+            raise HTTPException(status_code=404, detail="Order not found")
 
     progress = get_order_progress(db, ord.id)
     buyer_status = get_buyer_status_wording(ord.status, ord.currentStage)
@@ -203,18 +243,46 @@ def request_buyer_order_endpoint(
 
 @router.get("/invoices")
 def get_buyer_invoices(
+    search: Optional[str] = None,
+    sort_by: Optional[str] = "issuedAt",
+    sort_order: Optional[str] = "desc",
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["BUYER"])),
+    current_user=Depends(require_role(["BUYER", "ADMINISTRATOR", "MANAGER"])),
 ):
-    if not current_user.buyerId:
-        raise HTTPException(status_code=403, detail="User is not linked to any buyer entity")
+    query = select(Invoice).join(Order, Invoice.orderId == Order.id)
+    if current_user.role == "BUYER":
+        if not current_user.buyerId:
+            raise HTTPException(status_code=403, detail="User is not linked to any buyer entity")
+        query = query.where(Order.buyerId == current_user.buyerId)
 
-    invoices = db.execute(
-        select(Invoice)
-        .join(Order, Invoice.orderId == Order.id)
-        .where(Order.buyerId == current_user.buyerId)
-        .order_by(Invoice.issuedAt.desc())
-    ).scalars().all()
+    if search:
+        search_term = f"%{search.lower()}%"
+        from sqlalchemy import func, or_
+        query = query.where(
+            or_(
+                func.lower(Invoice.invoiceNo).like(search_term),
+                func.lower(Order.orderNo).like(search_term)
+            )
+        )
+        
+    sort_col_map = {
+        "invoiceNo": Invoice.invoiceNo,
+        "orderNo": Order.orderNo,
+        "issuedAt": Invoice.issuedAt,
+        "amount": Invoice.amount,
+        "status": Invoice.status,
+    }
+    target_col = sort_col_map.get(sort_by, Invoice.issuedAt)
+    direction = sort_order.lower() if sort_order else "desc"
+    order_clause = target_col.asc() if direction == "asc" else target_col.desc()
+
+    query = query.order_by(order_clause, Invoice.id.desc())
+    
+    from sqlalchemy import func
+    total = db.scalar(select(func.count()).select_from(query.with_only_columns(Invoice.id).subquery()))
+    invoices = db.execute(query.offset((page - 1) * page_size).limit(page_size)).scalars().all()
 
     invoices_data = []
     for inv in invoices:
@@ -230,4 +298,9 @@ def get_buyer_invoices(
             "status": inv.status,
         })
 
-    return invoices_data
+    return {
+        "items": invoices_data,
+        "total": total,
+        "page": page,
+        "pageSize": page_size
+    }

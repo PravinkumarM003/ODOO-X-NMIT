@@ -1,32 +1,48 @@
 import { requireRole } from "@/lib/auth";
 import { apiClient } from "@/lib/apiClient";
-import AppShell from "@/components/layout/AppShell";
 import ProductionBoardClient from "./ProductionBoardClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProductionPage() {
-  const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
+export default async function ProductionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const user = await requireRole(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "PRODUCTION_SUPERVISOR", "MECHANIC"]);
 
-  let board: any = { machines: [], queuedWorkOrders: [], employees: [] };
-  let notifications: any[] = [];
+  const sp = await searchParams;
+  const page = Number(sp.page) || 1;
+  const search = (sp.search as string) || "";
+
+  let board: any = { machines: [], queuedWorkOrders: [], employees: [], queuedTotal: 0, queuedPage: 1 };
+  let attendanceData: any[] = [];
 
   try {
-    const [boardRes, notifRes] = await Promise.all([
-      apiClient.get<any>("/production/board"),
-      apiClient.get<any[]>("/notifications"),
+    const params = new URLSearchParams();
+    params.append("page", page.toString());
+    params.append("page_size", "20");
+    if (search) params.append("search", search);
+
+    const [boardRes, peopleRes] = await Promise.all([
+      apiClient.get<any>(`/production/board?${params.toString()}`),
+      apiClient.get<any>("/people"),
     ]);
     if (boardRes) board = boardRes;
-    if (notifRes) notifications = notifRes;
+    if (peopleRes && peopleRes.employees) attendanceData = peopleRes.employees;
   } catch {}
 
   return (
-    <AppShell user={user} notifications={notifications}>
+    <>
       <ProductionBoardClient
+        userRole={user.role}
         machines={board.machines || []}
         workQueue={board.queuedWorkOrders || []}
         employees={board.employees || []}
+        attendanceData={attendanceData}
+        queuedTotal={board.queuedTotal || 0}
+        queuedPage={board.queuedPage || 1}
       />
-    </AppShell>
+    </>
   );
 }

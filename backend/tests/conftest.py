@@ -31,7 +31,7 @@ def db_session():
 
 @pytest.fixture(scope="session")
 def owner_headers(db_session):
-    user = db_session.query(User).filter(User.role == "OWNER").first()
+    user = db_session.query(User).filter(User.role == "ADMINISTRATOR").first()
     token = create_access_token({
         "userId": user.id,
         "email": user.email,
@@ -44,7 +44,7 @@ def owner_headers(db_session):
 
 @pytest.fixture(scope="session")
 def office_headers(db_session):
-    user = db_session.query(User).filter(User.role == "OFFICE").first()
+    user = db_session.query(User).filter(User.role == "MANAGER").first()
     token = create_access_token({
         "userId": user.id,
         "email": user.email,
@@ -57,7 +57,7 @@ def office_headers(db_session):
 
 @pytest.fixture(scope="session")
 def floor_headers(db_session):
-    user = db_session.query(User).filter(User.role == "FLOOR").first()
+    user = db_session.query(User).filter(User.role == "PRODUCTION_SUPERVISOR").first()
     token = create_access_token({
         "userId": user.id,
         "email": user.email,

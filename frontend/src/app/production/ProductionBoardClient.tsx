@@ -1,7 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+import React, { useState, useTransition } from "react";
 import Link from "next/link";
+import Pagination from "@/components/Pagination";
 import {
   Cpu,
   Play,
@@ -71,13 +74,25 @@ interface ProductionBoardClientProps {
   machines: MachineData[];
   workQueue: QueuedWorkOrder[];
   employees: EmployeeOption[];
+  attendanceData?: any[];
+  userRole?: string;
+  queuedTotal?: number;
+  queuedPage?: number;
 }
 
 export default function ProductionBoardClient({
   machines,
   workQueue,
   employees,
+  attendanceData = [],
+  userRole = "PRODUCTION_SUPERVISOR",
+  queuedTotal = 0,
+  queuedPage = 1,
 }: ProductionBoardClientProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
+  const [isPending, startTransition] = useTransition();
   const [typeFilter, setTypeFilter] = useState("ALL");
 
   // Modals
@@ -89,6 +104,35 @@ export default function ProductionBoardClient({
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const updateUrlParams = (search: string, page: number) => {
+    startTransition(() => {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      params.set("page", page.toString());
+      router.push(`?${params.toString()}`);
+    });
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
+  
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      updateUrlParams(searchTerm, 1);
+    }
+  };
+  
+  const handleSearchBlur = () => {
+    if (searchTerm !== (searchParams.get("search") || "")) {
+      updateUrlParams(searchTerm, 1);
+    }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    updateUrlParams(searchTerm, newPage);
+  };
 
   const filteredMachines = machines.filter(
     (m) => typeFilter === "ALL" || m.type === typeFilter
@@ -110,9 +154,9 @@ export default function ProductionBoardClient({
     if (res.error) {
       setErrorMsg(res.error);
     } else {
+      router.refresh();
       setAssignModalWO(null);
-      window.location.reload();
-    }
+          }
   };
 
   const handleLogSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -127,9 +171,9 @@ export default function ProductionBoardClient({
     if (res.error) {
       setErrorMsg(res.error);
     } else {
+      router.refresh();
       setLogOutputWO(null);
-      window.location.reload();
-    }
+          }
   };
 
   const handleCompleteSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -144,9 +188,9 @@ export default function ProductionBoardClient({
     if (res.error) {
       setErrorMsg(res.error);
     } else {
+      router.refresh();
       setCompleteStageWO(null);
-      window.location.reload();
-    }
+          }
   };
 
   const handleBreakdownSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -161,9 +205,9 @@ export default function ProductionBoardClient({
     if (res.error) {
       setErrorMsg(res.error);
     } else {
+      router.refresh();
       setBreakdownMachine(null);
-      window.location.reload();
-    }
+          }
   };
 
   const handleResolveBreakdown = async (machineId: string) => {
@@ -178,8 +222,8 @@ export default function ProductionBoardClient({
     if (res.error) {
       setErrorMsg(res.error);
     } else {
-      window.location.reload();
-    }
+      router.refresh();
+          }
   };
 
   const handleReassignSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -194,36 +238,43 @@ export default function ProductionBoardClient({
     if (res.error) {
       setErrorMsg(res.error);
     } else {
+      router.refresh();
       setReassignWO(null);
-      window.location.reload();
-    }
+          }
   };
+  const productionTeam = attendanceData.filter(emp => ['SPINNING', 'WEAVING', 'DYEING'].includes(emp.department));
+  const presentCount = productionTeam.filter(e => e.currentAttendance?.status === 'PRESENT').length;
+  const teamTotal = productionTeam.length;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-[#202B32] flex items-center gap-2">
-            <Cpu className="w-5 h-5 text-[#176B63]" />
+          <h1 className="text-xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-2">
+            <Cpu className="w-5 h-5 text-[var(--primary)]" />
             Production Floor & Machine Board
           </h1>
-          <p className="text-xs text-[#617078] mt-0.5">
+          <p className="text-xs text-[var(--text-secondary)] mt-0.5">
             Real-time machine telemetry, active stage progress, work order queues, and output logging.
           </p>
         </div>
 
         {/* Status Counters */}
-        <div className="flex items-center gap-3 text-xs">
-          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-green-50 text-[#277653] font-bold border border-green-200">
+        <div className="flex items-center gap-3 text-xs flex-wrap">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-50 text-[var(--primary)] font-bold border border-blue-200">
+            <span className="w-2 h-2 rounded-full bg-[var(--primary)]"></span>
+            Team Attendance: {presentCount} / {teamTotal}
+          </span>
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-green-50 text-[var(--success)] font-bold border border-green-200">
             <span className="w-2 h-2 rounded-full bg-[#277653]"></span>
             {runningCount} Running
           </span>
-          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-gray-50 text-[#617078] font-bold border border-[#DCE3E1]">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-gray-50 text-[var(--text-secondary)] font-bold border border-[var(--border)]">
             <span className="w-2 h-2 rounded-full bg-[#617078]"></span>
             {idleCount} Idle
           </span>
-          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-red-50 text-[#B44545] font-bold border border-red-200">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-red-50 text-[var(--critical)] font-bold border border-[rgba(255,77,77,0.3)]">
             <span className="w-2 h-2 rounded-full bg-[#B44545]"></span>
             {downCount} Down
           </span>
@@ -232,7 +283,7 @@ export default function ProductionBoardClient({
 
       {/* Global Error Banner */}
       {errorMsg && (
-        <div className="p-3 bg-red-50 border border-red-200 text-[#B44545] rounded-md text-xs font-semibold flex items-center justify-between">
+        <div className="p-3 bg-red-50 border border-[rgba(255,77,77,0.3)] text-[var(--critical)] rounded-md text-xs font-semibold flex items-center justify-between">
           <span>{errorMsg}</span>
           <button onClick={() => setErrorMsg(null)}>
             <X className="w-4 h-4" />
@@ -241,15 +292,15 @@ export default function ProductionBoardClient({
       )}
 
       {/* Machine Type Filter */}
-      <div className="flex items-center gap-2 border-b border-[#DCE3E1] pb-2 text-xs">
+      <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2 text-xs">
         {["ALL", "SPINNING", "WEAVING", "DYEING"].map((t) => (
           <button
             key={t}
             onClick={() => setTypeFilter(t)}
             className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${
               typeFilter === t
-                ? "bg-[#172D38] text-white"
-                : "text-[#617078] hover:text-[#202B32] hover:bg-white"
+                ? "bg-[var(--sidebar)] text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)]"
             }`}
           >
             {t}
@@ -268,104 +319,104 @@ export default function ProductionBoardClient({
           return (
             <div
               key={m.id}
-              className={`bg-white border rounded-lg p-4 shadow-xs flex flex-col justify-between transition-all ${
+              className={`bg-[var(--surface)] border rounded-lg p-4 shadow-[0_4px_15px_rgba(0,0,0,0.5)] border border-[var(--border)] bg-[var(--surface-glass)] backdrop-blur-md flex flex-col justify-between transition-all ${
                 m.status === "RUNNING"
-                  ? "border-[#176B63]/40"
+                  ? "border-[var(--primary)]/40"
                   : m.status === "BREAKDOWN"
                   ? "border-red-300 bg-red-50/20"
-                  : "border-[#DCE3E1]"
+                  : "border-[var(--border)]"
               }`}
             >
               <div>
                 {/* Card Header */}
-                <div className="flex items-center justify-between pb-2 border-b border-[#DCE3E1]">
-                  <span className="font-mono-id text-base font-bold text-[#176B63]">{m.code}</span>
+                <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+                  <span className="font-mono-id text-base font-bold text-[var(--primary)]">{m.code}</span>
                   <span
                     className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                       m.status === "RUNNING"
-                        ? "bg-green-100 text-[#277653]"
+                        ? "bg-[rgba(0,230,118,0.15)] text-[var(--success)]"
                         : m.status === "IDLE"
-                        ? "bg-gray-100 text-[#617078]"
-                        : "bg-red-100 text-[#B44545]"
+                        ? "bg-gray-100 text-[var(--text-secondary)]"
+                        : "bg-[rgba(255,77,77,0.15)] text-[var(--critical)]"
                     }`}
                   >
                     {m.status}
                   </span>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between text-[11px] text-[#617078]">
-                  <span>Type: <strong className="text-[#202B32]">{m.type}</strong></span>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--text-secondary)]">
+                  <span>Type: <strong className="text-[var(--text-primary)]">{m.type}</strong></span>
                   <span className="font-mono-id">Today: <strong>{m.todayOutputMetres} m</strong></span>
                 </div>
 
                 {/* Active Work Order / Breakdown Info */}
                 {m.status === "BREAKDOWN" ? (
-                  <div className="mt-3 p-2.5 bg-red-50 border border-red-200 rounded text-xs">
-                    <div className="flex items-center gap-1 text-[#B44545] font-bold text-[11px] uppercase">
+                  <div className="mt-3 p-2.5 bg-red-50 border border-[rgba(255,77,77,0.3)] rounded text-xs">
+                    <div className="flex items-center gap-1 text-[var(--critical)] font-bold text-[11px] uppercase">
                       <AlertOctagon className="w-3.5 h-3.5" />
                       Breakdown Active
                     </div>
-                    <p className="text-[11px] text-[#202B32] mt-1 font-medium">
+                    <p className="text-[11px] text-[var(--text-primary)] mt-1 font-medium">
                       {m.activeDowntime?.reason || "Under unscheduled maintenance"}
                     </p>
                     <button
                       onClick={() => handleResolveBreakdown(m.id)}
-                      disabled={loading}
-                      className="mt-2 w-full py-1 bg-white border border-red-300 hover:bg-red-50 text-[#B44545] font-semibold text-[11px] rounded transition-colors"
+                      disabled={loading || (userRole !== "MECHANIC" && userRole !== "ADMINISTRATOR")}
+                      className="mt-2 w-full py-1 bg-[var(--surface)] border border-red-300 hover:bg-red-50 text-[var(--critical)] font-semibold text-[11px] rounded transition-colors"
                     >
                       Resolve Breakdown & Set Idle
                     </button>
                   </div>
                 ) : wo ? (
-                  <div className="mt-3 p-2.5 bg-[#F9FAFA] border border-[#DCE3E1] rounded text-xs space-y-2">
+                  <div className="mt-3 p-2.5 bg-[var(--sidebar-secondary)] border border-[var(--border)] rounded text-xs space-y-2">
                     <div className="flex items-center justify-between">
                       <Link
                         href={`/orders/${wo.orderId}`}
-                        className="font-mono-id font-bold text-[#176B63] hover:underline"
+                        className="font-mono-id font-bold text-[var(--primary)] hover:underline"
                       >
                         {wo.orderNo}
                       </Link>
-                      <span className="text-[10px] text-[#617078] font-semibold uppercase">{wo.stage}</span>
+                      <span className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase">{wo.stage}</span>
                     </div>
 
                     {/* Stage Progress Bar (Labelled "Stage progress" per Section 7.5 & BR-25) */}
                     <div>
-                      <div className="flex items-center justify-between text-[10px] text-[#617078] mb-0.5 font-mono-id">
+                      <div className="flex items-center justify-between text-[10px] text-[var(--text-secondary)] mb-0.5 font-mono-id">
                         <span>Stage progress</span>
-                        <span className="font-bold text-[#202B32]">{stageProgress}%</span>
+                        <span className="font-bold text-[var(--text-primary)]">{stageProgress}%</span>
                       </div>
                       <div className="w-full bg-[#E5EAE8] h-1.5 rounded-full overflow-hidden">
                         <div
-                          className="bg-[#176B63] h-full rounded-full transition-all"
+                          className="bg-[var(--primary)] h-full rounded-full transition-all"
                           style={{ width: `${stageProgress}%` }}
                         ></div>
                       </div>
-                      <div className="text-[10px] text-[#617078] mt-0.5 font-mono-id">
+                      <div className="text-[10px] text-[var(--text-secondary)] mt-0.5 font-mono-id">
                         {wo.producedQtyMetres} m / {wo.plannedQtyMetres} m
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="mt-4 text-center py-4 text-xs text-[#617078] bg-[#F9FAFA] rounded border border-dashed border-[#DCE3E1]">
+                  <div className="mt-4 text-center py-4 text-xs text-[var(--text-secondary)] bg-[var(--sidebar-secondary)] rounded border border-dashed border-[var(--border)]">
                     No active job. Machine is IDLE and available for allocation.
                   </div>
                 )}
               </div>
 
               {/* Card Actions */}
-              <div className="mt-3 pt-2 border-t border-[#DCE3E1] flex items-center justify-between gap-1 text-xs">
+              <div className="mt-3 pt-2 border-t border-[var(--border)] flex items-center justify-between gap-1 text-xs">
                 {wo && (
                   <>
                     <button
                       onClick={() => setLogOutputWO(wo)}
-                      className="px-2 py-1 text-[11px] font-semibold text-[#176B63] hover:bg-[#EBF3F1] rounded transition-colors"
+                      className="px-2 py-1 text-[11px] font-semibold text-[var(--primary)] hover:bg-[rgba(0,240,255,0.1)] rounded transition-colors"
                     >
                       Log Output
                     </button>
 
                     <button
                       onClick={() => setCompleteStageWO(wo)}
-                      className="px-2 py-1 text-[11px] font-semibold text-[#277653] hover:bg-green-50 rounded transition-colors"
+                      className="px-2 py-1 text-[11px] font-semibold text-[var(--success)] hover:bg-green-50 rounded transition-colors"
                     >
                       Complete
                     </button>
@@ -375,7 +426,8 @@ export default function ProductionBoardClient({
                 {m.status !== "BREAKDOWN" && (
                   <button
                     onClick={() => setBreakdownMachine(m)}
-                    className="ml-auto px-2 py-1 text-[11px] font-semibold text-[#B44545] hover:bg-red-50 rounded transition-colors"
+                    disabled={userRole !== "PRODUCTION_SUPERVISOR" && userRole !== "ADMINISTRATOR"}
+                    className="ml-auto px-2 py-1 text-[11px] font-semibold text-[var(--critical)] hover:bg-red-50 rounded transition-colors"
                   >
                     Report Down
                   </button>
@@ -387,24 +439,37 @@ export default function ProductionBoardClient({
       </div>
 
       {/* Production Work Queue (Confirmed Orders Ready for Next Stage) */}
-      <div className="bg-white border border-[#DCE3E1] rounded-lg shadow-xs overflow-hidden">
-        <div className="px-4 py-3 bg-[#F4F6F5] border-b border-[#DCE3E1] flex items-center justify-between">
+      <div className="premium-card overflow-hidden">
+        <div className="px-4 py-3 bg-[var(--background)] border-b border-[var(--border)] flex items-center justify-between">
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#202B32] flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-[#176B63]" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-[var(--primary)]" />
               Production Work Queue (Awaiting Machine Assignment)
             </h2>
-            <p className="text-[11px] text-[#617078] mt-0.5">
+            <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
               Orders requiring machines for Spinning, Weaving, or Dyeing. Stage precedence is strictly enforced (BR-08).
             </p>
           </div>
-          <span className="text-xs font-mono-id text-[#617078]">{workQueue.length} jobs in queue</span>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search order or stage..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                onKeyDown={handleSearchKeyDown}
+                onBlur={handleSearchBlur}
+                className="w-48 text-xs bg-[var(--background)] border border-[var(--border)] rounded pl-3 pr-3 py-1 text-[var(--text-primary)] focus:outline-none focus:border-[var(--primary)]"
+              />
+            </div>
+            <span className="text-xs font-mono-id text-[var(--text-secondary)]">{queuedTotal} jobs in queue</span>
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className={`overflow-x-auto transition-opacity ${isPending ? 'opacity-50' : 'opacity-100'}`}>
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-[#DCE3E1] text-[#617078] font-bold uppercase tracking-wider text-[11px]">
+              <tr className="border-b border-[var(--border)] text-[var(--text-secondary)] font-bold uppercase tracking-wider text-[11px]">
                 <th className="py-2.5 px-4">Order No</th>
                 <th className="py-2.5 px-4">Buyer</th>
                 <th className="py-2.5 px-4">Stage</th>
@@ -413,36 +478,36 @@ export default function ProductionBoardClient({
                 <th className="py-2.5 px-4 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#DCE3E1]">
+            <tbody className="divide-y divide-[var(--border)]">
               {workQueue.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-[#617078]">
+                  <td colSpan={6} className="py-6 text-center text-[var(--text-secondary)]">
                     No unassigned work orders in the queue.
                   </td>
                 </tr>
               ) : (
                 workQueue.map((wq) => (
-                  <tr key={wq.id} className="hover:bg-[#F9FAFA]">
-                    <td className="py-3 px-4 font-mono-id font-bold text-[#176B63]">
+                  <tr key={wq.id} className="hover:bg-[var(--sidebar-secondary)]">
+                    <td className="py-3 px-4 font-mono-id font-bold text-[var(--primary)]">
                       <Link href={`/orders/${wq.orderId}`} className="hover:underline flex items-center gap-1">
                         {wq.orderNo}
-                        <ExternalLink className="w-3 h-3 text-[#617078]" />
+                        <ExternalLink className="w-3 h-3 text-[var(--text-secondary)]" />
                       </Link>
                     </td>
-                    <td className="py-3 px-4 font-semibold text-[#202B32]">{wq.buyerName}</td>
-                    <td className="py-3 px-4 font-semibold text-[#202B32]">{wq.stage}</td>
-                    <td className="py-3 px-4 text-right font-mono-id text-[#202B32]">{wq.plannedQtyMetres} m</td>
+                    <td className="py-3 px-4 font-semibold text-[var(--text-primary)]">{wq.buyerName}</td>
+                    <td className="py-3 px-4 font-semibold text-[var(--text-primary)]">{wq.stage}</td>
+                    <td className="py-3 px-4 text-right font-mono-id text-[var(--text-primary)]">{wq.plannedQtyMetres} m</td>
                     <td className="py-3 px-4 text-center">
                       {wq.status === "BLOCKED" ? (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-[#B44545] uppercase">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[rgba(255,77,77,0.15)] text-[var(--critical)] uppercase">
                           BLOCKED
                         </span>
                       ) : wq.canStart ? (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-[#277653] uppercase">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[rgba(0,230,118,0.15)] text-[var(--success)] uppercase">
                           Ready to Assign
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-[#617078] uppercase" title={wq.blockReason}>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-[var(--text-secondary)] uppercase" title={wq.blockReason}>
                           Waiting Preceding Stage
                         </span>
                       )}
@@ -451,19 +516,21 @@ export default function ProductionBoardClient({
                       {wq.status === "BLOCKED" ? (
                         <button
                           onClick={() => setReassignWO(wq)}
-                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded text-xs shadow-xs"
+                          disabled={userRole !== "PRODUCTION_SUPERVISOR" && userRole !== "ADMINISTRATOR"}
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-[var(--text-primary)] font-semibold rounded text-xs shadow-[0_4px_15px_rgba(0,0,0,0.5)] border border-[var(--border)] bg-[var(--surface-glass)] backdrop-blur-md"
                         >
                           Reassign Machine
                         </button>
                       ) : wq.canStart ? (
                         <button
                           onClick={() => setAssignModalWO(wq)}
-                          className="px-2.5 py-1 bg-[#176B63] hover:bg-[#11564F] text-white font-semibold rounded text-xs shadow-xs"
+                          disabled={userRole !== "PRODUCTION_SUPERVISOR" && userRole !== "ADMINISTRATOR"}
+                          className="px-2.5 py-1 bg-[var(--primary)] hover:bg-[var(--primary-hover)] active:scale-95 transition-all duration-200 text-[var(--text-primary)] font-semibold rounded text-xs shadow-[0_4px_15px_rgba(0,0,0,0.5)] border border-[var(--border)] bg-[var(--surface-glass)] backdrop-blur-md"
                         >
                           Assign Machine (BR-09)
                         </button>
                       ) : (
-                        <span className="text-[11px] text-[#617078] italic">
+                        <span className="text-[11px] text-[var(--text-secondary)] italic">
                           {wq.blockReason || "Stage locked"}
                         </span>
                       )}
@@ -474,16 +541,24 @@ export default function ProductionBoardClient({
             </tbody>
           </table>
         </div>
+        <div className="px-4 pb-4 mt-2">
+          <Pagination 
+            currentPage={queuedPage}
+            totalRecords={queuedTotal}
+            onPageChange={handlePageChange}
+            loading={isPending}
+          />
+        </div>
       </div>
 
       {/* Assign Machine Modal (BR-09) */}
       {assignModalWO && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl border border-[#DCE3E1] max-w-md w-full p-6 text-xs">
-            <h3 className="text-sm font-bold text-[#202B32] uppercase tracking-wider mb-2">
+          <div className="bg-[var(--surface)] rounded-lg shadow-xl border border-[var(--border)] max-w-md w-full p-6 text-xs">
+            <h3 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-wider mb-2">
               Assign Machine to {assignModalWO.stage} Stage
             </h3>
-            <p className="text-[#617078] mb-4">
+            <p className="text-[var(--text-secondary)] mb-4">
               Order <strong>{assignModalWO.orderNo}</strong> ({assignModalWO.buyerName}) · {assignModalWO.plannedQtyMetres} metres.
             </p>
 
@@ -491,13 +566,13 @@ export default function ProductionBoardClient({
               <input type="hidden" name="workOrderId" value={assignModalWO.id} />
 
               <div>
-                <label className="block font-semibold text-[#202B32] mb-1">
+                <label className="block font-semibold text-[var(--text-primary)] mb-1">
                   Select Matching IDLE Machine *
                 </label>
                 <select
                   name="machineId"
                   required
-                  className="w-full px-2 py-1.5 border border-[#DCE3E1] rounded text-[#202B32]"
+                  className="w-full px-2 py-1.5 border border-[var(--border)] rounded text-[var(--text-primary)]"
                 >
                   <option value="">Select IDLE {assignModalWO.stage} Machine</option>
                   {machines
@@ -508,23 +583,23 @@ export default function ProductionBoardClient({
                       </option>
                     ))}
                 </select>
-                <p className="text-[10px] text-[#617078] mt-1">
+                <p className="text-[10px] text-[var(--text-secondary)] mt-1">
                   Only IDLE machines matching stage type {assignModalWO.stage} can be assigned (BR-09).
                 </p>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#DCE3E1]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border)]">
                 <button
                   type="button"
                   onClick={() => setAssignModalWO(null)}
-                  className="px-3 py-1.5 border border-[#DCE3E1] rounded text-[#617078]"
+                  className="px-3 py-1.5 border border-[var(--border)] rounded text-[var(--text-secondary)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-1.5 bg-[#176B63] hover:bg-[#11564F] text-white font-semibold rounded disabled:opacity-50"
+                  className="px-4 py-1.5 bg-[var(--primary)] hover:bg-[var(--primary-hover)] active:scale-95 transition-all duration-200 text-[var(--text-primary)] font-semibold rounded disabled:opacity-50"
                 >
                   {loading ? "Assigning..." : "Assign Machine"}
                 </button>
@@ -537,11 +612,11 @@ export default function ProductionBoardClient({
       {/* Log Output Dialog (BR-10) */}
       {logOutputWO && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl border border-[#DCE3E1] max-w-md w-full p-6 text-xs">
-            <h3 className="text-sm font-bold text-[#202B32] uppercase tracking-wider mb-2">
+          <div className="bg-[var(--surface)] rounded-lg shadow-xl border border-[var(--border)] max-w-md w-full p-6 text-xs">
+            <h3 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-wider mb-2">
               Log Production Output
             </h3>
-            <p className="text-[#617078] mb-4">
+            <p className="text-[var(--text-secondary)] mb-4">
               Order <strong>{logOutputWO.orderNo}</strong> ({logOutputWO.stage} Stage). Produced so far: {logOutputWO.producedQtyMetres} / {logOutputWO.plannedQtyMetres} m.
             </p>
 
@@ -549,13 +624,13 @@ export default function ProductionBoardClient({
               <input type="hidden" name="workOrderId" value={logOutputWO.id} />
 
               <div>
-                <label className="block font-semibold text-[#202B32] mb-1">
+                <label className="block font-semibold text-[var(--text-primary)] mb-1">
                   Operator / Employee *
                 </label>
                 <select
                   name="employeeId"
                   required
-                  className="w-full px-2 py-1.5 border border-[#DCE3E1] rounded text-[#202B32]"
+                  className="w-full px-2 py-1.5 border border-[var(--border)] rounded text-[var(--text-primary)]"
                 >
                   <option value="">Select Operator</option>
                   {employees.map((emp) => (
@@ -568,7 +643,7 @@ export default function ProductionBoardClient({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-[#202B32] mb-1">
+                  <label className="block font-semibold text-[var(--text-primary)] mb-1">
                     Metres Produced *
                   </label>
                   <input
@@ -577,11 +652,11 @@ export default function ProductionBoardClient({
                     name="qtyMetres"
                     required
                     placeholder="e.g. 150"
-                    className="w-full font-mono-id px-3 py-1.5 border border-[#DCE3E1] rounded text-[#202B32]"
+                    className="w-full font-mono-id px-3 py-1.5 border border-[var(--border)] rounded text-[var(--text-primary)]"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#202B32] mb-1">
+                  <label className="block font-semibold text-[var(--text-primary)] mb-1">
                     Hours Worked *
                   </label>
                   <input
@@ -590,20 +665,20 @@ export default function ProductionBoardClient({
                     name="hours"
                     required
                     placeholder="e.g. 6.5"
-                    className="w-full font-mono-id px-3 py-1.5 border border-[#DCE3E1] rounded text-[#202B32]"
+                    className="w-full font-mono-id px-3 py-1.5 border border-[var(--border)] rounded text-[var(--text-primary)]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-[#202B32] mb-1">
+                <label className="block font-semibold text-[var(--text-primary)] mb-1">
                   Shift *
                 </label>
                 <select
                   name="shift"
                   required
                   defaultValue="MORNING"
-                  className="w-full px-2 py-1.5 border border-[#DCE3E1] rounded text-[#202B32]"
+                  className="w-full px-2 py-1.5 border border-[var(--border)] rounded text-[var(--text-primary)]"
                 >
                   <option value="MORNING">Morning Shift</option>
                   <option value="EVENING">Evening Shift</option>
@@ -611,18 +686,18 @@ export default function ProductionBoardClient({
                 </select>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#DCE3E1]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border)]">
                 <button
                   type="button"
                   onClick={() => setLogOutputWO(null)}
-                  className="px-3 py-1.5 border border-[#DCE3E1] rounded text-[#617078]"
+                  className="px-3 py-1.5 border border-[var(--border)] rounded text-[var(--text-secondary)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-1.5 bg-[#176B63] hover:bg-[#11564F] text-white font-semibold rounded disabled:opacity-50"
+                  className="px-4 py-1.5 bg-[var(--primary)] hover:bg-[var(--primary-hover)] active:scale-95 transition-all duration-200 text-[var(--text-primary)] font-semibold rounded disabled:opacity-50"
                 >
                   {loading ? "Recording..." : "Record Output (BR-10)"}
                 </button>
@@ -635,11 +710,11 @@ export default function ProductionBoardClient({
       {/* Complete Stage Action Dialog (BR-11 for Spinning consumption) */}
       {completeStageWO && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl border border-[#DCE3E1] max-w-md w-full p-6 text-xs">
-            <h3 className="text-sm font-bold text-[#277653] uppercase tracking-wider mb-2">
+          <div className="bg-[var(--surface)] rounded-lg shadow-xl border border-[var(--border)] max-w-md w-full p-6 text-xs">
+            <h3 className="text-sm font-bold text-[var(--success)] uppercase tracking-wider mb-2">
               Complete {completeStageWO.stage} Stage
             </h3>
-            <p className="text-[#617078] mb-4">
+            <p className="text-[var(--text-secondary)] mb-4">
               Completing this stage releases the machine back to IDLE.
             </p>
 
@@ -649,14 +724,14 @@ export default function ProductionBoardClient({
 
               {completeStageWO.stage === "SPINNING" && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs space-y-2">
-                  <div className="font-bold text-[#A86F1F] uppercase text-[11px]">
+                  <div className="font-bold text-[var(--warning)] uppercase text-[11px]">
                     BR-11: FIFO Yarn Consumption
                   </div>
-                  <p className="text-[11px] text-[#202B32]">
+                  <p className="text-[11px] text-[var(--text-primary)]">
                     Completing Spinning will release the order reservation and post CONSUME movements from the oldest lots.
                   </p>
                   <div>
-                    <label className="block font-semibold text-[#202B32] mb-1">
+                    <label className="block font-semibold text-[var(--text-primary)] mb-1">
                       Actual Yarn Consumed (kg):
                     </label>
                     <input
@@ -664,24 +739,24 @@ export default function ProductionBoardClient({
                       step="0.1"
                       name="actualKgUsed"
                       placeholder="Leave empty for reserved default"
-                      className="w-full font-mono-id px-3 py-1.5 border border-[#DCE3E1] rounded bg-white text-[#202B32]"
+                      className="w-full font-mono-id px-3 py-1.5 border border-[var(--border)] rounded bg-[var(--surface)] text-[var(--text-primary)]"
                     />
                   </div>
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#DCE3E1]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border)]">
                 <button
                   type="button"
                   onClick={() => setCompleteStageWO(null)}
-                  className="px-3 py-1.5 border border-[#DCE3E1] rounded text-[#617078]"
+                  className="px-3 py-1.5 border border-[var(--border)] rounded text-[var(--text-secondary)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-1.5 bg-[#277653] hover:bg-green-700 text-white font-semibold rounded disabled:opacity-50"
+                  className="px-4 py-1.5 bg-[#277653] hover:bg-green-700 text-[var(--text-primary)] font-semibold rounded disabled:opacity-50"
                 >
                   {loading ? "Completing..." : "Complete Stage"}
                 </button>
@@ -694,11 +769,11 @@ export default function ProductionBoardClient({
       {/* Report Breakdown Modal (BR-12) */}
       {breakdownMachine && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl border border-[#DCE3E1] max-w-md w-full p-6 text-xs">
-            <h3 className="text-sm font-bold text-[#B44545] uppercase tracking-wider mb-2">
+          <div className="bg-[var(--surface)] rounded-lg shadow-xl border border-[var(--border)] max-w-md w-full p-6 text-xs">
+            <h3 className="text-sm font-bold text-[var(--critical)] uppercase tracking-wider mb-2">
               Report Breakdown on {breakdownMachine.code}
             </h3>
-            <p className="text-[#617078] mb-4">
+            <p className="text-[var(--text-secondary)] mb-4">
               Marking BREAKDOWN opens a MachineDowntime record and sets any active work order to BLOCKED (BR-12).
             </p>
 
@@ -706,7 +781,7 @@ export default function ProductionBoardClient({
               <input type="hidden" name="machineId" value={breakdownMachine.id} />
 
               <div>
-                <label className="block font-semibold text-[#202B32] mb-1">
+                <label className="block font-semibold text-[var(--text-primary)] mb-1">
                   Reason for Breakdown (min 3 chars) *
                 </label>
                 <textarea
@@ -714,22 +789,22 @@ export default function ProductionBoardClient({
                   rows={2}
                   required
                   placeholder="e.g. Needle bar jamming and lubrication pump alarm"
-                  className="w-full px-3 py-1.5 border border-[#DCE3E1] rounded text-[#202B32]"
+                  className="w-full px-3 py-1.5 border border-[var(--border)] rounded text-[var(--text-primary)]"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#DCE3E1]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border)]">
                 <button
                   type="button"
                   onClick={() => setBreakdownMachine(null)}
-                  className="px-3 py-1.5 border border-[#DCE3E1] rounded text-[#617078]"
+                  className="px-3 py-1.5 border border-[var(--border)] rounded text-[var(--text-secondary)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-1.5 bg-[#B44545] hover:bg-red-700 text-white font-semibold rounded disabled:opacity-50"
+                  className="px-4 py-1.5 bg-[#B44545] hover:bg-red-700 text-[var(--text-primary)] font-semibold rounded disabled:opacity-50"
                 >
                   {loading ? "Recording..." : "Confirm Breakdown"}
                 </button>
@@ -742,11 +817,11 @@ export default function ProductionBoardClient({
       {/* Reassign Blocked Work Order Modal (BR-12) */}
       {reassignWO && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl border border-[#DCE3E1] max-w-md w-full p-6 text-xs">
+          <div className="bg-[var(--surface)] rounded-lg shadow-xl border border-[var(--border)] max-w-md w-full p-6 text-xs">
             <h3 className="text-sm font-bold text-amber-600 uppercase tracking-wider mb-2">
               Reassign Blocked Work Order
             </h3>
-            <p className="text-[#617078] mb-4">
+            <p className="text-[var(--text-secondary)] mb-4">
               Order <strong>{reassignWO.orderNo}</strong> ({reassignWO.stage} Stage). Select an alternate IDLE machine of the same type.
             </p>
 
@@ -754,13 +829,13 @@ export default function ProductionBoardClient({
               <input type="hidden" name="workOrderId" value={reassignWO.id} />
 
               <div>
-                <label className="block font-semibold text-[#202B32] mb-1">
+                <label className="block font-semibold text-[var(--text-primary)] mb-1">
                   Select Alternate IDLE Machine *
                 </label>
                 <select
                   name="newMachineId"
                   required
-                  className="w-full px-2 py-1.5 border border-[#DCE3E1] rounded text-[#202B32]"
+                  className="w-full px-2 py-1.5 border border-[var(--border)] rounded text-[var(--text-primary)]"
                 >
                   <option value="">Select IDLE Machine</option>
                   {machines
@@ -773,18 +848,18 @@ export default function ProductionBoardClient({
                 </select>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#DCE3E1]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border)]">
                 <button
                   type="button"
                   onClick={() => setReassignWO(null)}
-                  className="px-3 py-1.5 border border-[#DCE3E1] rounded text-[#617078]"
+                  className="px-3 py-1.5 border border-[var(--border)] rounded text-[var(--text-secondary)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-1.5 bg-[#176B63] hover:bg-[#11564F] text-white font-semibold rounded disabled:opacity-50"
+                  className="px-4 py-1.5 bg-[var(--primary)] hover:bg-[var(--primary-hover)] active:scale-95 transition-all duration-200 text-[var(--text-primary)] font-semibold rounded disabled:opacity-50"
                 >
                   {loading ? "Reassigning..." : "Reassign & Resume"}
                 </button>

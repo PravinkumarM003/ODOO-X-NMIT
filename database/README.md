@@ -27,7 +27,7 @@ All entity definitions, constraints, indexes, and relationships are declared in 
 ## Schema Ownership & Entities
 
 Schema ownership belongs strictly to the **Python FastAPI Backend** (`backend/`):
-1. **Users & Authentication**: `User` (with bcrypt password hashes and roles `OWNER`, `OFFICE`, `FLOOR`, `BUYER`).
+1. **Users & Authentication**: `User` (with bcrypt password hashes and roles `ADMINISTRATOR`, `MANAGER`, `FLOOR`, `BUYER`).
 2. **Yarn Management**: `YarnType`, `YarnLot`, `StockMovement` (ledger-based inventory arithmetic).
 3. **Buyer Orders**: `BuyerOrder`, `Buyer`, `Supplier`, `SupplierBill`.
 4. **Production Pipeline**: `WorkOrder`, `Machine`, `ProductionOutput`, `MachineBreakdown`.

@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 import uuid
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 from fastapi import HTTPException
 
 from app.models.entities import YarnItem, YarnLot, StockMovement, SupplierBill, Supplier, Order
@@ -84,13 +84,32 @@ def get_yarn_stock_summary(*args, **kwargs) -> YarnSummaryResult:
     if not item:
         raise HTTPException(status_code=404, detail="Yarn item not found")
 
-    movements = db.query(StockMovement).filter(StockMovement.yarnItemId == yarn_item_id).all()
+    # Use SQL aggregation instead of loading all movements into Python.
+    # This replaces the previous approach of db.query(StockMovement).all()
+    # followed by Python-side sum() with type filtering.
+    row = db.query(
+        func.coalesce(func.sum(
+            case((StockMovement.type == "RECEIPT", StockMovement.qtyKg), else_=0)
+        ), 0).label("total_receipt"),
+        func.coalesce(func.sum(
+            case((StockMovement.type == "CONSUME", StockMovement.qtyKg), else_=0)
+        ), 0).label("total_consume"),
+        func.coalesce(func.sum(
+            case((StockMovement.type == "ADJUST", StockMovement.qtyKg), else_=0)
+        ), 0).label("total_adjust"),
+        func.coalesce(func.sum(
+            case((StockMovement.type == "RESERVE", StockMovement.qtyKg), else_=0)
+        ), 0).label("total_reserve"),
+        func.coalesce(func.sum(
+            case((StockMovement.type == "RELEASE", StockMovement.qtyKg), else_=0)
+        ), 0).label("total_release"),
+    ).filter(StockMovement.yarnItemId == yarn_item_id).one()
 
-    total_receipt = sum(m.qtyKg for m in movements if m.type == "RECEIPT")
-    total_consume = sum(m.qtyKg for m in movements if m.type == "CONSUME")
-    total_adjust = sum(m.qtyKg for m in movements if m.type == "ADJUST")  # signed delta
-    total_reserve = sum(m.qtyKg for m in movements if m.type == "RESERVE")
-    total_release = sum(m.qtyKg for m in movements if m.type == "RELEASE")
+    total_receipt = float(row.total_receipt)
+    total_consume = float(row.total_consume)
+    total_adjust = float(row.total_adjust)
+    total_reserve = float(row.total_reserve)
+    total_release = float(row.total_release)
 
     # BR-02 formulas
     on_hand = round(total_receipt - total_consume + total_adjust, 2)

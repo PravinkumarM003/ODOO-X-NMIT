@@ -1,20 +1,55 @@
 from datetime import datetime, timezone
-from typing import Dict, Any
-from sqlalchemy.orm import Session
+from typing import Dict, Any, Optional
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select, func
 
-from app.models.entities import Order, Roll, Machine, ProductionLog, QCRecord, Dispatch
+from app.models.entities import Order, Roll, Machine, ProductionLog, QCRecord, Dispatch, WorkOrder
 from app.services.notification_service import get_computed_notifications
 from app.services.finance_service import calculate_order_risk
 
 
-def get_overview_data(db: Session) -> Dict[str, Any]:
-    notifications = get_computed_notifications(db)
+def get_overview_data(
+    db: Session,
+    user_role: str = "ADMINISTRATOR",
+    buyer_id: Optional[str] = None,
+    sort_by: str = "severity",
+    sort_order: str = "desc"
+) -> Dict[str, Any]:
     now = datetime.now(timezone.utc)
     today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
 
-    # 1. Orders and Risk
-    orders = db.execute(select(Order)).scalars().all()
+    # 1. Fetch Active Orders with relations eager loaded
+    stmt = select(Order).where(Order.status.notin_(["COMPLETED", "CANCELLED"])).options(
+        selectinload(Order.buyer),
+        selectinload(Order.workOrders),
+        selectinload(Order.rolls),
+    )
+    if user_role == "BUYER" and buyer_id:
+        stmt = stmt.where(Order.buyerId == buyer_id)
+    orders = db.execute(stmt).scalars().all()
+
+    all_notifications = get_computed_notifications(db, user_role=user_role, buyer_id=buyer_id, pre_fetched_orders=orders)
+    total_attention_items = len(all_notifications)
+    
+    # Sort attention items dynamically with unique tie-breaker
+    sev_map = {"CRITICAL": 3, "WARNING": 2, "INFO": 1}
+    is_desc = sort_order.lower() == "desc"
+    
+    def sort_key(item: Dict[str, Any]):
+        sev_val = sev_map.get(item.get("severity", "INFO"), 0)
+        dt_val = item.get("date_ts", 0)
+        item_id = item.get("id", "")
+        if sort_by == "title":
+            return (item.get("title", "").lower(), -sev_val if is_desc else sev_val, item_id)
+        elif sort_by == "type":
+            return (item.get("type", "").lower(), -sev_val if is_desc else sev_val, item_id)
+        elif sort_by == "date":
+            return (dt_val if not is_desc else -dt_val, -sev_val if is_desc else sev_val, item_id)
+        else:
+            return (sev_val if not is_desc else -sev_val, -dt_val if is_desc else dt_val, item_id)
+
+    all_notifications.sort(key=sort_key)
+    top_20_notifications = all_notifications[:20]
     active_orders_count = 0
     at_risk_orders_count = 0
     ready_to_ship_count = 0
@@ -37,13 +72,13 @@ def get_overview_data(db: Session) -> Dict[str, Any]:
     ) or 0
 
     # 3. Finished metres on shelf
-    shelf_rolls = db.execute(
-        select(Roll.lengthMetres).where(
+    shelf_metres_sum = db.scalar(
+        select(func.sum(Roll.lengthMetres)).where(
             Roll.qcStatus == "PASSED",
             Roll.stockStatus == "IN_STORE"
         )
-    ).scalars().all()
-    finished_metres_on_shelf = round(sum(shelf_rolls), 2)
+    )
+    finished_metres_on_shelf = round(shelf_metres_sum or 0.0, 2)
 
     # 4. Machine status counts
     machines = db.execute(select(Machine)).scalars().all()
@@ -61,8 +96,11 @@ def get_overview_data(db: Session) -> Dict[str, Any]:
     }
 
     # 6. Today's output by machine
+    # 6. Today's output by machine
     today_logs = db.execute(
-        select(ProductionLog).where(ProductionLog.loggedAt >= today_start)
+        select(ProductionLog)
+        .options(selectinload(ProductionLog.workOrder))
+        .where(ProductionLog.loggedAt >= today_start)
     ).scalars().all()
 
     today_map: Dict[str, float] = {}
@@ -81,16 +119,26 @@ def get_overview_data(db: Session) -> Dict[str, Any]:
     ]
 
     # 7. Recent floor events
+    from sqlalchemy.orm import joinedload
     recent_logs = db.execute(
-        select(ProductionLog).order_by(ProductionLog.loggedAt.desc()).limit(5)
+        select(ProductionLog)
+        .options(
+            selectinload(ProductionLog.workOrder).selectinload(WorkOrder.order),
+            selectinload(ProductionLog.employee)
+        )
+        .order_by(ProductionLog.loggedAt.desc()).limit(5)
     ).scalars().all()
 
     recent_qcs = db.execute(
-        select(QCRecord).order_by(QCRecord.createdAt.desc()).limit(5)
+        select(QCRecord)
+        .options(selectinload(QCRecord.roll))
+        .order_by(QCRecord.createdAt.desc()).limit(5)
     ).scalars().all()
 
     recent_dispatches = db.execute(
-        select(Dispatch).order_by(Dispatch.dispatchedAt.desc()).limit(5)
+        select(Dispatch)
+        .options(selectinload(Dispatch.lines), selectinload(Dispatch.order))
+        .order_by(Dispatch.dispatchedAt.desc()).limit(5)
     ).scalars().all()
 
     events = []
@@ -139,7 +187,8 @@ def get_overview_data(db: Session) -> Dict[str, Any]:
     ]
 
     return {
-        "attentionItems": notifications,
+        "attentionItems": top_20_notifications,
+        "totalAttentionItems": total_attention_items,
         "summaryTiles": {
             "activeOrdersCount": active_orders_count,
             "atRiskOrdersCount": at_risk_orders_count,

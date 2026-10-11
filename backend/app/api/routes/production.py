@@ -1,9 +1,10 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select
 
 from app.db.session import get_db
-from app.models.entities import Machine, WorkOrder, Employee, Order, MachineDowntime
+from app.models.entities import Machine, WorkOrder, Employee, Order, MachineDowntime, ProductionLog
 from app.core.dependencies import require_role
 from app.services.production_service import (
     assign_machine_to_work_order,
@@ -28,35 +29,91 @@ router = APIRouter(prefix="/production", tags=["Production"])
 
 @router.get("/board")
 def get_production_board(
+    search: str | None = None,
+    sort_by: str | None = "stage",
+    sort_order: str | None = "asc",
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE", "FLOOR"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "INSPECTION_SUPERVISOR", "MECHANIC", "DISPATCH_OFFICER"])),
 ):
-    machines = db.execute(select(Machine).order_by(Machine.code.asc())).scalars().all()
+    machines = db.execute(
+        select(Machine)
+        .options(
+            selectinload(Machine.workOrders).selectinload(WorkOrder.order).selectinload(Order.buyer),
+            selectinload(Machine.downtimes),
+        )
+        .order_by(Machine.code.asc())
+    ).scalars().all()
     employees = db.execute(select(Employee).where(Employee.active == True).order_by(Employee.name.asc())).scalars().all()
 
-    # Work orders awaiting assignment (NOT_STARTED or BLOCKED)
-    queued_work_orders = db.execute(
-        select(WorkOrder)
-        .where(WorkOrder.status.in_(["NOT_STARTED", "BLOCKED"]))
-        .order_by(WorkOrder.stage.asc())
+    now = datetime.now(timezone.utc)
+    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    today_logs = db.execute(
+        select(ProductionLog)
+        .options(selectinload(ProductionLog.workOrder))
+        .where(ProductionLog.loggedAt >= today_start)
     ).scalars().all()
+
+    today_map = {}
+    for log in today_logs:
+        if log.workOrder and log.workOrder.machineId:
+            mid = log.workOrder.machineId
+            today_map[mid] = today_map.get(mid, 0.0) + log.qtyMetres
+
+    # Work orders awaiting assignment (NOT_STARTED or BLOCKED)
+    query = select(WorkOrder).outerjoin(Order, WorkOrder.orderId == Order.id).where(WorkOrder.status.in_(["NOT_STARTED", "BLOCKED"]))
+    
+    if search:
+        search_term = f"%{search.lower()}%"
+        from sqlalchemy import func, or_
+        query = query.where(
+            or_(
+                func.lower(Order.orderNo).like(search_term),
+                func.lower(WorkOrder.stage).like(search_term)
+            )
+        )
+        
+    sort_col_map = {
+        "stage": WorkOrder.stage,
+        "plannedQtyMetres": WorkOrder.plannedQtyMetres,
+        "producedQtyMetres": WorkOrder.producedQtyMetres,
+        "status": WorkOrder.status,
+        "orderNo": Order.orderNo,
+        "createdAt": WorkOrder.id,
+    }
+    target_col = sort_col_map.get(sort_by, WorkOrder.stage)
+    direction = sort_order.lower() if sort_order else "asc"
+    order_clause = target_col.asc() if direction == "asc" else target_col.desc()
+
+    query = query.order_by(order_clause, WorkOrder.id.desc())
+    
+    from sqlalchemy import func
+    total = db.scalar(select(func.count()).select_from(query.with_only_columns(WorkOrder.id).subquery()))
+    queued_work_orders = db.execute(query.offset((page - 1) * page_size).limit(page_size)).scalars().all()
 
     machine_cards = []
     for m in machines:
-        active_wo = db.execute(
-            select(WorkOrder)
-            .where(WorkOrder.machineId == m.id, WorkOrder.status == "IN_PROGRESS")
-        ).scalar_one_or_none()
+        active_wo = next((wo for wo in m.workOrders if wo.status == "IN_PROGRESS"), None)
 
         downtime = None
         if m.status == "BREAKDOWN":
-            dt = db.execute(
-                select(MachineDowntime)
-                .where(MachineDowntime.machineId == m.id, MachineDowntime.endedAt == None)
-                .order_by(MachineDowntime.startedAt.desc())
-            ).scalars().first()
+            open_dts = [dt for dt in m.downtimes if dt.endedAt is None]
+            dt = sorted(open_dts, key=lambda d: d.startedAt, reverse=True)[0] if open_dts else None
             if dt:
                 downtime = {"id": dt.id, "reason": dt.reason, "startedAt": dt.startedAt.isoformat()}
+
+        wo_data = {
+            "id": active_wo.id,
+            "orderId": active_wo.orderId,
+            "orderNo": active_wo.order.orderNo if active_wo.order else "",
+            "buyerName": active_wo.order.buyer.name if active_wo.order and active_wo.order.buyer else "",
+            "stage": active_wo.stage,
+            "plannedQtyMetres": active_wo.plannedQtyMetres,
+            "producedQtyMetres": active_wo.producedQtyMetres,
+            "status": active_wo.status,
+            "startedAt": active_wo.startedAt.isoformat() if active_wo.startedAt else None,
+        } if active_wo else None
 
         machine_cards.append({
             "id": m.id,
@@ -64,33 +121,60 @@ def get_production_board(
             "type": m.type,
             "status": m.status,
             "hourlyRate": m.hourlyRate,
+            "todayOutputMetres": round(today_map.get(m.id, 0.0), 1),
             "downtime": downtime,
-            "activeWorkOrder": {
-                "id": active_wo.id,
-                "orderId": active_wo.orderId,
-                "orderNo": active_wo.order.orderNo if active_wo.order else "",
-                "stage": active_wo.stage,
-                "plannedQtyMetres": active_wo.plannedQtyMetres,
-                "producedQtyMetres": active_wo.producedQtyMetres,
-                "status": active_wo.status,
-                "startedAt": active_wo.startedAt.isoformat() if active_wo.startedAt else None,
-            } if active_wo else None,
+            "activeDowntime": downtime,
+            "activeWorkOrder": wo_data,
+            "currentWorkOrder": wo_data,
+        })
+
+    queued_list = []
+    for w in queued_work_orders:
+        order = w.order
+        other_wos = order.workOrders if order else []
+        can_start = False
+        block_reason = None
+
+        if order and order.status in ["CANCELLED", "AWAITING_YARN"]:
+            can_start = False
+            block_reason = "Order awaiting raw material or cancelled"
+        elif w.stage == "SPINNING":
+            can_start = True
+            block_reason = None
+        elif w.stage == "WEAVING":
+            spinning_wo = next((o for o in other_wos if o.stage == "SPINNING"), None)
+            if spinning_wo and spinning_wo.status == "COMPLETED":
+                can_start = True
+            else:
+                can_start = False
+                block_reason = "Spinning stage must be completed before weaving"
+        elif w.stage == "DYEING":
+            weaving_wo = next((o for o in other_wos if o.stage == "WEAVING"), None)
+            if weaving_wo and weaving_wo.status == "COMPLETED":
+                can_start = True
+            else:
+                can_start = False
+                block_reason = "Weaving stage must be completed before dyeing"
+
+        queued_list.append({
+            "id": w.id,
+            "orderId": w.orderId,
+            "orderNo": w.order.orderNo if w.order else "",
+            "buyerName": w.order.buyer.name if w.order and w.order.buyer else "",
+            "stage": w.stage,
+            "plannedQtyMetres": w.plannedQtyMetres,
+            "producedQtyMetres": w.producedQtyMetres,
+            "status": w.status,
+            "canStart": can_start,
+            "blockReason": block_reason,
         })
 
     return {
         "machines": machine_cards,
-        "queuedWorkOrders": [
-            {
-                "id": w.id,
-                "orderId": w.orderId,
-                "orderNo": w.order.orderNo if w.order else "",
-                "buyerName": w.order.buyer.name if w.order and w.order.buyer else "",
-                "stage": w.stage,
-                "plannedQtyMetres": w.plannedQtyMetres,
-                "status": w.status,
-            }
-            for w in queued_work_orders
-        ],
+        "queuedWorkOrders": queued_list,
+        "queuedTotal": total,
+        "queuedPage": page,
+        "queuedPageSize": page_size,
         "employees": [{"id": e.id, "name": e.name, "department": e.department} for e in employees],
     }
 
@@ -99,7 +183,7 @@ def get_production_board(
 def assign_machine_endpoint(
     req: AssignMachineRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE", "FLOOR"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "INSPECTION_SUPERVISOR", "MECHANIC", "DISPATCH_OFFICER"])),
 ):
     try:
         wo = assign_machine_to_work_order(
@@ -117,7 +201,7 @@ def assign_machine_endpoint(
 def log_output_endpoint(
     req: LogOutputRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE", "FLOOR"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "INSPECTION_SUPERVISOR", "MECHANIC", "DISPATCH_OFFICER"])),
 ):
     try:
         log = log_production_output(
@@ -137,7 +221,7 @@ def log_output_endpoint(
 def complete_stage_endpoint(
     req: CompleteStageRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE", "FLOOR"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "INSPECTION_SUPERVISOR", "MECHANIC", "DISPATCH_OFFICER"])),
 ):
     try:
         if req.stage == "SPINNING":
@@ -162,7 +246,7 @@ def complete_stage_endpoint(
 def report_breakdown_endpoint(
     req: ReportBreakdownRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE", "FLOOR"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "INSPECTION_SUPERVISOR", "MECHANIC", "DISPATCH_OFFICER"])),
 ):
     try:
         mach = report_machine_breakdown(
@@ -179,7 +263,7 @@ def report_breakdown_endpoint(
 def resolve_breakdown_endpoint(
     req: ResolveBreakdownRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE", "FLOOR"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "INSPECTION_SUPERVISOR", "MECHANIC", "DISPATCH_OFFICER"])),
 ):
     try:
         mach = resolve_machine_breakdown(
@@ -195,7 +279,7 @@ def resolve_breakdown_endpoint(
 def reassign_work_order_endpoint(
     req: ReassignWorkOrderRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE", "FLOOR"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "INSPECTION_SUPERVISOR", "MECHANIC", "DISPATCH_OFFICER"])),
 ):
     try:
         wo = reassign_blocked_work_order(

@@ -23,6 +23,20 @@ export interface CancelOrderResult {
   status?: string;
 }
 
+export async function fetchOrdersAction(page: number = 1, search: string = "", statusFilter: string = "ALL") {
+  try {
+    const params = new URLSearchParams();
+    params.append("page", page.toString());
+    params.append("page_size", "20");
+    if (search) params.append("search", search);
+    if (statusFilter && statusFilter !== "ALL") params.append("status", statusFilter);
+    
+    return await apiClient.get<any>(`/orders?${params.toString()}`);
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
 export async function checkYarnAvailabilityAction(fabricTypeId: string, qtyMetres: number) {
   if (!fabricTypeId || isNaN(qtyMetres) || qtyMetres <= 0) {
     return null;

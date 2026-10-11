@@ -1,24 +1,31 @@
 import { requireRole } from "@/lib/auth";
 import { apiClient } from "@/lib/apiClient";
-import AppShell from "@/components/layout/AppShell";
 import OverviewClient from "./OverviewClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  const user = await requireRole(["OWNER", "OFFICE", "FLOOR"]);
+  const user = await requireRole(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "MECHANIC", "INSPECTION_SUPERVISOR", "DISPATCH_OFFICER"]);
 
   let data: any = {};
+  let attendanceData: any[] = [];
   try {
-    data = await apiClient.get<any>("/overview");
+    const [overviewData, peopleRes] = await Promise.all([
+      apiClient.get<any>("/overview"),
+      apiClient.get<any>("/people"),
+    ]);
+    if (overviewData) data = overviewData;
+    if (peopleRes && peopleRes.employees) attendanceData = peopleRes.employees;
   } catch {}
 
   const notifications = data?.attentionItems || [];
+  const totalAttentionItems = data?.totalAttentionItems ?? notifications.length;
 
   return (
-    <AppShell user={user} notifications={notifications}>
+    <>
       <OverviewClient
         attentionItems={notifications}
+        totalAttentionItems={totalAttentionItems}
         summaryTiles={
           data?.summaryTiles || {
             activeOrdersCount: 0,
@@ -35,7 +42,8 @@ export default async function OverviewPage() {
         todayOutputs={data?.todayOutputs || []}
         recentEvents={data?.recentEvents || []}
         userRole={user.role}
+        attendanceData={attendanceData}
       />
-    </AppShell>
+    </>
   );
 }

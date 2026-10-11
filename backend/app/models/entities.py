@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     UniqueConstraint,
     TypeDecorator,
+    DateTime,
 )
 from sqlalchemy.types import String as BaseString
 from sqlalchemy.orm import relationship
@@ -60,8 +61,9 @@ class User(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False, index=True)
     passwordHash = Column(String, nullable=False)
-    role = Column(String, nullable=False)  # OWNER, OFFICE, FLOOR, BUYER
+    role = Column(String, nullable=False)  # ADMINISTRATOR, MANAGER, FLOOR, BUYER
     buyerId = Column(String, ForeignKey("Buyer.id"), nullable=True)
+    avatarUrl = Column(String, nullable=True)
     createdAt = Column(PrismaDateTime, default=lambda: datetime.now(timezone.utc))
 
     buyer = relationship("Buyer", back_populates="users")
@@ -375,6 +377,8 @@ class Attendance(Base):
     shift = Column(String, nullable=False)  # MORNING, EVENING, NIGHT
     status = Column(String, nullable=False)  # PRESENT, ABSENT, LEAVE
     overtimeHours = Column(Float, default=0.0, nullable=False)
+    checkIn = Column(DateTime(timezone=True), nullable=True)
+    checkOut = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (UniqueConstraint("employeeId", "date", name="_employee_date_uc"),)
 
@@ -399,3 +403,40 @@ class WageSummary(Base):
     __table_args__ = (UniqueConstraint("employeeId", "month", name="_employee_month_uc"),)
 
     employee = relationship("Employee", back_populates="wageSummaries")
+
+class SupportConversation(Base):
+    __tablename__ = "SupportConversation"
+
+    id = Column(String, primary_key=True, default=generate_id)
+    buyerId = Column(String, ForeignKey("Buyer.id"), nullable=False, index=True)
+    createdById = Column(String, ForeignKey("User.id"), nullable=False)
+    subject = Column(String, nullable=False)  # Order Enquiry, Production Update, Quality Issue, Delivery, Payment, General Support
+    orderId = Column(String, ForeignKey("Order.id"), nullable=True, index=True)
+    status = Column(String, default="OPEN", nullable=False, index=True)  # OPEN, PENDING, RESOLVED
+    assignedStaffId = Column(String, ForeignKey("User.id"), nullable=True)
+    lastMessageText = Column(String, nullable=True)
+    lastMessageAt = Column(PrismaDateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    createdAt = Column(PrismaDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updatedAt = Column(PrismaDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    buyer = relationship("Buyer")
+    createdBy = relationship("User", foreign_keys=[createdById])
+    assignedStaff = relationship("User", foreign_keys=[assignedStaffId])
+    order = relationship("Order")
+    messages = relationship("SupportMessage", back_populates="conversation", cascade="all, delete-orphan", order_by="SupportMessage.createdAt.asc()")
+
+class SupportMessage(Base):
+    __tablename__ = "SupportMessage"
+
+    id = Column(String, primary_key=True, default=generate_id)
+    conversationId = Column(String, ForeignKey("SupportConversation.id"), nullable=False, index=True)
+    senderId = Column(String, ForeignKey("User.id"), nullable=False, index=True)
+    senderRole = Column(String, nullable=False)  # BUYER, ADMINISTRATOR, MANAGER, etc.
+    senderName = Column(String, nullable=False)
+    body = Column(String, nullable=False)
+    isReadByBuyer = Column(Boolean, default=False, nullable=False)
+    isReadByStaff = Column(Boolean, default=False, nullable=False)
+    createdAt = Column(PrismaDateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+    conversation = relationship("SupportConversation", back_populates="messages")
+    sender = relationship("User")

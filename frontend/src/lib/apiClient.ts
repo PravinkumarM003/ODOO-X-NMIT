@@ -1,5 +1,4 @@
-import { cookies } from "next/headers";
-
+// Dynamic import for server cookies to allow apiClient usage in client components
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api/v1";
 
@@ -28,6 +27,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   // Check if running on server side (Node.js/Next.js SSR or Server Actions)
   if (typeof window === "undefined") {
     try {
+      const { cookies } = await import("next/headers");
       const cookieStore = await cookies();
       const token = cookieStore.get("texflow_session")?.value;
       if (token) {
@@ -36,6 +36,16 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
       }
     } catch {
       // cookies() might not be available in some server contexts
+    }
+  } else {
+    try {
+      const match = document.cookie.match(new RegExp("(^| )texflow_session=([^;]+)"));
+      const token = (match && match[2]) || (typeof localStorage !== "undefined" ? localStorage.getItem("texflow_token") : null);
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+    } catch {
+      // document.cookie fallback
     }
   }
 
@@ -61,6 +71,7 @@ async function request<T>(endpoint: string, options: ApiOptions = {}): Promise<T
   const fetchOptions: RequestInit = {
     ...options,
     headers: mergedHeaders,
+    credentials: "include",
     cache: options.cache || "no-store",
   };
 
@@ -72,6 +83,9 @@ async function request<T>(endpoint: string, options: ApiOptions = {}): Promise<T
       let errData = null;
       try {
         errData = await res.json();
+        if (errData && res.status >= 500) {
+          console.error("Backend error detail:", errData);
+        }
         if (errData && errData.detail) {
           errorMsg = Array.isArray(errData.detail)
             ? errData.detail.map((d: any) => d.msg || JSON.stringify(d)).join("; ")
@@ -105,6 +119,13 @@ export const apiClient = {
     request<T>(endpoint, {
       ...options,
       method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+
+  patch: <T>(endpoint: string, body?: any, options?: ApiOptions) =>
+    request<T>(endpoint, {
+      ...options,
+      method: "PATCH",
       body: body ? JSON.stringify(body) : undefined,
     }),
 

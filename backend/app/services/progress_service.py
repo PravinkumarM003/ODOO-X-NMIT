@@ -19,17 +19,30 @@ def get_order_progress(*args, **kwargs) -> OrderProgressResult:
     if len(args) == 2:
         if isinstance(args[0], Session):
             db = args[0]
-            order_id = args[1]
+            if isinstance(args[1], Order):
+                order = args[1]
+                order_id = order.id
+            else:
+                order_id = args[1]
+                order = None
         else:
-            order_id = args[0]
             db = args[1]
-    elif "db" in kwargs and "order_id" in kwargs:
+            if isinstance(args[0], Order):
+                order = args[0]
+                order_id = order.id
+            else:
+                order_id = args[0]
+                order = None
+    elif "db" in kwargs and ("order_id" in kwargs or "order" in kwargs):
         db = kwargs["db"]
-        order_id = kwargs["order_id"]
+        order = kwargs.get("order")
+        order_id = order.id if order else kwargs.get("order_id")
     else:
-        raise ValueError("Both db and order_id are required")
+        raise ValueError("db and order/order_id are required")
 
-    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        order = db.query(Order).filter(Order.id == order_id).first()
+        
     if not order:
         return OrderProgressResult({
             "orderId": order_id,
@@ -44,8 +57,16 @@ def get_order_progress(*args, **kwargs) -> OrderProgressResult:
             "dispatchCompletion": {"dispatchPercent": 0, "dispatchedMetres": 0, "orderQtyMetres": 0, "summaryText": "0 m dispatched"},
         })
 
-    work_orders = db.query(WorkOrder).filter(WorkOrder.orderId == order_id).all()
-    rolls = db.query(Roll).filter(Roll.orderId == order_id).all()
+    # Try to use eagerly loaded relationships if present, else query
+    try:
+        work_orders = order.workOrders
+    except Exception:
+        work_orders = db.query(WorkOrder).filter(WorkOrder.orderId == order_id).all()
+        
+    try:
+        rolls = order.rolls
+    except Exception:
+        rolls = db.query(Roll).filter(Roll.orderId == order_id).all()
 
     # 1. Production progress % (BR-25.1)
     if work_orders:
@@ -89,9 +110,17 @@ def get_order_progress(*args, **kwargs) -> OrderProgressResult:
         qc_status_text = f"{qc_resolved_pct}% resolved ({len(passed_rolls)} Passed, {len(rework_rolls)} Rework, {len(rejected_rolls)} Rejected, {len(pending_rolls)} Pending)"
 
     # 3. Dispatch completion (BR-25.3)
+    # Check if there are any rolls that might have dispatch lines
+    dispatch_line_roll_ids = set()
+    roll_ids = [r.id for r in rolls]
+    if roll_ids:
+        # Check if any dispatch line exists for these rolls in one bulk query
+        dl = db.query(DispatchLine.rollId).filter(DispatchLine.rollId.in_(roll_ids)).all()
+        dispatch_line_roll_ids = {x[0] for x in dl}
+
     dispatched_rolls = [
         r for r in rolls
-        if r.stockStatus == "DISPATCHED" or db.query(DispatchLine).filter(DispatchLine.rollId == r.id).first()
+        if r.stockStatus == "DISPATCHED" or r.id in dispatch_line_roll_ids
     ]
     dispatched_metres = sum(r.lengthMetres for r in dispatched_rolls)
     dispatch_pct = round((dispatched_metres / order.qtyMetres * 100), 1) if order.qtyMetres > 0 else 0.0

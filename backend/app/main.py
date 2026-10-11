@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+import os
 
 from app.core.config import settings
 from app.db.session import engine
@@ -18,6 +20,7 @@ from app.api.routes import (
     overview,
     notifications,
     buyer_portal,
+    support,
 )
 
 app = FastAPI(
@@ -37,6 +40,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Static files for uploads
+os.makedirs("uploads/avatars", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 
 # Global ValueError handler -> 400 Bad Request
 @app.exception_handler(ValueError)
@@ -52,9 +59,12 @@ async def value_error_handler(request: Request, exc: ValueError):
 def health_check():
     db_ok = False
     try:
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             conn.execute(text("SELECT 1"))
             db_ok = True
+            # Safe, reversible legacy role normalization
+            conn.execute(text("UPDATE User SET role = 'ADMINISTRATOR' WHERE role IN ('OWNER', 'ADMIN', 'admin', 'owner')"))
+            conn.execute(text("UPDATE User SET role = 'MANAGER' WHERE role IN ('OFFICE', 'office')"))
     except Exception:
         db_ok = False
 
@@ -89,3 +99,5 @@ app.include_router(buyers_suppliers.router, prefix=API_PREFIX)
 app.include_router(overview.router, prefix=API_PREFIX)
 app.include_router(notifications.router, prefix=API_PREFIX)
 app.include_router(buyer_portal.router, prefix=API_PREFIX)
+app.include_router(support.router, prefix=API_PREFIX)
+

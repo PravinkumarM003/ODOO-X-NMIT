@@ -12,6 +12,9 @@ export async function markAttendanceAction(formData: FormData) {
     ? parseFloat(formData.get("overtimeHours") as string)
     : 0;
 
+  const checkIn = formData.get("checkIn") as string | null;
+  const checkOut = formData.get("checkOut") as string | null;
+
   if (!employeeId || !date) return { error: "Employee and date are required" };
 
   try {
@@ -21,6 +24,8 @@ export async function markAttendanceAction(formData: FormData) {
       shift: shift || "MORNING",
       status: status || "PRESENT",
       overtimeHours,
+      checkIn,
+      checkOut,
     });
 
     revalidatePath("/people");

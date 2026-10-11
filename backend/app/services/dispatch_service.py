@@ -150,32 +150,74 @@ def record_payment(
 
 
 def get_store_rolls(db: Session) -> Dict[str, Any]:
-    rolls = db.execute(select(Roll).order_by(Roll.createdAt.desc())).scalars().all()
+    from sqlalchemy.orm import selectinload
 
-    shelf = [r for r in rolls if r.qcStatus == "PASSED" and r.stockStatus == "IN_STORE"]
-    awaiting_qc = [r for r in rolls if r.qcStatus in ["PENDING", "REWORK"] and r.stockStatus == "IN_STORE"]
-    quarantined = [r for r in rolls if r.qcStatus == "REJECTED" and r.stockStatus == "IN_STORE"]
-    dispatched = [r for r in rolls if r.stockStatus == "DISPATCHED"]
+    # Aggregate total counts and metres in the database
+    stats = db.execute(
+        select(
+            Roll.qcStatus,
+            Roll.stockStatus,
+            func.count(Roll.id).label("count"),
+            func.sum(Roll.lengthMetres).label("metres")
+        ).group_by(Roll.qcStatus, Roll.stockStatus)
+    ).all()
+    
+    counts = {"shelf": 0, "awaitingQC": 0, "quarantined": 0, "dispatched": 0}
+    metres = {"shelf": 0.0, "awaitingQC": 0.0, "quarantined": 0.0, "dispatched": 0.0}
+    
+    for qcStatus, stockStatus, count, met in stats:
+        met = met or 0.0
+        if qcStatus == "PASSED" and stockStatus == "IN_STORE":
+            counts["shelf"] += count
+            metres["shelf"] += float(met)
+        elif qcStatus in ["PENDING", "REWORK"] and stockStatus == "IN_STORE":
+            counts["awaitingQC"] += count
+            metres["awaitingQC"] += float(met)
+        elif qcStatus == "REJECTED" and stockStatus == "IN_STORE":
+            counts["quarantined"] += count
+            metres["quarantined"] += float(met)
+        elif stockStatus == "DISPATCHED":
+            counts["dispatched"] += count
+            metres["dispatched"] += float(met)
+            
+    # Helper to fetch top 20 efficiently with required relations
+    def fetch_top_20(condition):
+        return db.execute(
+            select(Roll)
+            .where(condition)
+            .order_by(Roll.createdAt.desc())
+            .limit(20)
+            .options(
+                selectinload(Roll.order).selectinload(Order.buyer),
+                selectinload(Roll.qcRecords),
+                selectinload(Roll.dispatchLine).selectinload(DispatchLine.dispatch).selectinload(Dispatch.invoice)
+            )
+        ).scalars().all()
+        
+    shelf = fetch_top_20((Roll.qcStatus == "PASSED") & (Roll.stockStatus == "IN_STORE"))
+    awaiting_qc = fetch_top_20(Roll.qcStatus.in_(["PENDING", "REWORK"]) & (Roll.stockStatus == "IN_STORE"))
+    quarantined = fetch_top_20((Roll.qcStatus == "REJECTED") & (Roll.stockStatus == "IN_STORE"))
+    dispatched = fetch_top_20(Roll.stockStatus == "DISPATCHED")
 
     return {
         "shelf": {
             "rolls": shelf,
-            "count": len(shelf),
-            "metres": round(sum(r.lengthMetres for r in shelf), 2),
+            "count": counts["shelf"],
+            "metres": round(metres["shelf"], 2),
         },
         "awaitingQC": {
             "rolls": awaiting_qc,
-            "count": len(awaiting_qc),
-            "metres": round(sum(r.lengthMetres for r in awaiting_qc), 2),
+            "count": counts["awaitingQC"],
+            "metres": round(metres["awaitingQC"], 2),
         },
         "quarantined": {
             "rolls": quarantined,
-            "count": len(quarantined),
-            "metres": round(sum(r.lengthMetres for r in quarantined), 2),
+            "count": counts["quarantined"],
+            "metres": round(metres["quarantined"], 2),
         },
         "dispatched": {
             "rolls": dispatched,
-            "count": len(dispatched),
-            "metres": round(sum(r.lengthMetres for r in dispatched), 2),
+            "count": counts["dispatched"],
+            "metres": round(metres["dispatched"], 2),
         },
     }

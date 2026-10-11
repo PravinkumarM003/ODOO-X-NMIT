@@ -86,13 +86,13 @@ async function main() {
         name: "Arunachalam Chettiar (Owner)",
         email: "owner@everest.demo",
         passwordHash,
-        role: "OWNER",
+        role: "ADMINISTRATOR",
       },
       {
         name: "Meenakshi Sundaram (Office)",
         email: "office@everest.demo",
         passwordHash,
-        role: "OFFICE",
+        role: "MANAGER",
       },
       {
         name: "Selvam Kumar (Floor Supervisor)",
@@ -297,7 +297,7 @@ async function main() {
     { empNo: "EMP-009", name: "Balamurugan C.", department: "QC", jobTitle: "QC Examiner", dailyWage: 600, overtimeRatePerHour: 100 },
     { empNo: "EMP-010", name: "Ramesh Kannan", department: "STORE", jobTitle: "Yarn Store In-charge", dailyWage: 640, overtimeRatePerHour: 110 },
     { empNo: "EMP-011", name: "Gopalakrishnan V.", department: "STORE", jobTitle: "Packing & Dispatch Clerk", dailyWage: 580, overtimeRatePerHour: 100 },
-    { empNo: "EMP-012", name: "Geetha Lakshmi", department: "OFFICE", jobTitle: "Production Accounts Clerk", dailyWage: 720, overtimeRatePerHour: 125 },
+    { empNo: "EMP-012", name: "Geetha Lakshmi", department: "MANAGER", jobTitle: "Production Accounts Clerk", dailyWage: 720, overtimeRatePerHour: 125 },
   ];
 
   const employees = [];

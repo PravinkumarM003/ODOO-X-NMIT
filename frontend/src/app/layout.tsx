@@ -22,15 +22,37 @@ export const metadata: Metadata = {
   description: "From Yarn to Delivery, Every Roll Accounted For. Textile Manufacturing System.",
 };
 
-export default function RootLayout({
+import { getSession } from "@/lib/auth";
+import AppShell from "@/components/layout/AppShell";
+import { apiClient } from "@/lib/apiClient";
+import { ThemeProvider } from "@/components/ThemeProvider";
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await getSession();
+
+  let notifications: any[] = [];
+  if (session) {
+    try {
+      notifications = await apiClient.get<any[]>("/notifications");
+    } catch {}
+  }
+
   return (
-    <html lang="en" className={`h-full ${ibmPlexSans.variable} ${ibmPlexMono.variable}`}>
-      <body className="min-h-full flex flex-col bg-[#F4F6F5] text-[#202B32] font-sans">
-        {children}
+    <html lang="en" className={`h-full ${ibmPlexSans.variable} ${ibmPlexMono.variable}`} suppressHydrationWarning>
+      <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--text-primary)] font-sans">
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          {session ? (
+            <AppShell user={session} notifications={notifications}>
+              {children}
+            </AppShell>
+          ) : (
+            children
+          )}
+        </ThemeProvider>
       </body>
     </html>
   );

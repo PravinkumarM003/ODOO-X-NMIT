@@ -30,7 +30,7 @@ def test_yarn_stock_invariants(db_session):
 
 def test_dispatch_requires_passed_rolls(client, office_headers, db_session):
     # BR-15: Selected rolls must be PASSED and IN_STORE
-    rework_or_rejected = db_session.query(Roll).filter(Roll.qcStatus.in_(["REJECTED", "REWORK"])).first()
+    rework_or_rejected = db_session.query(Roll).filter(Roll.qcStatus.in_(["REJECTED", "REWORK"]), Roll.stockStatus == "IN_STORE").first()
     if rework_or_rejected:
         order = rework_or_rejected.order
         response = client.post(

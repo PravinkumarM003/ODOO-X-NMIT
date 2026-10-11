@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select
 
 from app.db.session import get_db
@@ -28,19 +28,143 @@ router = APIRouter(prefix="/orders", tags=["Orders"])
 @router.get("")
 def list_orders(
     status_filter: Optional[str] = Query(None, alias="status"),
+    search: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query("createdAt"),
+    sort_order: Optional[str] = Query("desc"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE", "FLOOR"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "INSPECTION_SUPERVISOR", "MECHANIC", "DISPATCH_OFFICER"])),
 ):
-    query = select(Order).order_by(Order.createdAt.desc())
-    if status_filter:
-        query = query.where(Order.status == status_filter)
+    query = (
+        select(Order)
+        .outerjoin(Buyer, Order.buyerId == Buyer.id)
+        .outerjoin(FabricType, Order.fabricTypeId == FabricType.id)
+        .options(
+            selectinload(Order.buyer),
+            selectinload(Order.fabricType),
+            selectinload(Order.workOrders).selectinload(WorkOrder.machine),
+            selectinload(Order.rolls),
+        )
+    )
 
-    orders = db.execute(query).scalars().all()
+    if status_filter and status_filter != "ALL":
+        if status_filter == "NEEDS_REVIEW":
+            query = query.where(Order.status == "NEW")
+        elif status_filter == "IN_PRODUCTION":
+            query = query.where(Order.status.in_(["IN_PRODUCTION", "CONFIRMED"]))
+        elif status_filter == "COMPLETED":
+            query = query.where(Order.status.in_(["COMPLETED", "PARTIALLY_DISPATCHED"]))
+        else:
+            query = query.where(Order.status == status_filter)
+
+    if search:
+        search_term = f"%{search.lower()}%"
+        from sqlalchemy import func, or_
+        query = query.where(
+            or_(
+                func.lower(Order.orderNo).like(search_term),
+                func.lower(Buyer.name).like(search_term),
+                func.lower(FabricType.name).like(search_term),
+                func.lower(Order.colour).like(search_term)
+            )
+        )
+
+    # Safe column sorting mapping
+    sort_col_map = {
+        "orderNo": Order.orderNo,
+        "buyer": Buyer.name,
+        "fabricType": FabricType.name,
+        "qtyMetres": Order.qtyMetres,
+        "deadline": Order.deadline,
+        "status": Order.status,
+        "createdAt": Order.createdAt,
+    }
+    target_col = sort_col_map.get(sort_by, Order.createdAt)
+    direction = sort_order.lower() if sort_order else "desc"
+    order_clause = target_col.asc() if direction == "asc" else target_col.desc()
+
+    query = query.order_by(order_clause, Order.id.desc())
+
+    from sqlalchemy import func
+    total = db.scalar(select(func.count()).select_from(query.with_only_columns(Order.id).subquery()))
+
+    orders = db.execute(query.offset((page - 1) * page_size).limit(page_size)).scalars().all()
     now = datetime.now(timezone.utc)
+
+    # Pre-fetch dispatch lines for all orders in one query to avoid N+1
+    all_order_ids = [o.id for o in orders]
+    dispatch_lines_by_order = {}
+    if all_order_ids:
+        from app.models.entities import DispatchLine
+        dlines = db.execute(
+            select(DispatchLine)
+            .join(Roll, DispatchLine.rollId == Roll.id)
+            .options(selectinload(DispatchLine.roll))
+            .where(Roll.orderId.in_(all_order_ids))
+        ).scalars().all()
+        for dl in dlines:
+            oid = dl.roll.orderId if dl.roll else None
+            if oid:
+                dispatch_lines_by_order.setdefault(oid, []).append(dl)
 
     result = []
     for ord in orders:
-        progress = get_order_progress(db, ord.id)
+        # Inline progress calculation using already-loaded relationships
+        work_orders = ord.workOrders or []
+        rolls = ord.rolls or []
+
+        # Production progress
+        if work_orders:
+            total_planned = sum(wo.plannedQtyMetres for wo in work_orders)
+            total_produced = sum(min(wo.producedQtyMetres, wo.plannedQtyMetres) for wo in work_orders)
+            production_pct = min(100, round((total_produced / total_planned * 100))) if total_planned > 0 else 0
+        else:
+            production_pct = 0
+
+        # QC readiness
+        reg_count = len(rolls)
+        passed_count = sum(1 for r in rolls if r.qcStatus == "PASSED")
+        rework_count = sum(1 for r in rolls if r.qcStatus == "REWORK")
+        rejected_count = sum(1 for r in rolls if r.qcStatus == "REJECTED")
+        pending_count = sum(1 for r in rolls if r.qcStatus == "PENDING")
+        reg_metres = sum(r.lengthMetres for r in rolls)
+        passed_metres = sum(r.lengthMetres for r in rolls if r.qcStatus == "PASSED")
+        rejected_metres = sum(r.lengthMetres for r in rolls if r.qcStatus == "REJECTED")
+
+        if reg_count == 0:
+            qc_status_text = "Not started"
+            qc_resolved_pct = 0.0
+        else:
+            resolved_metres = passed_metres + rejected_metres
+            qc_resolved_pct = round((resolved_metres / reg_metres * 100), 1) if reg_metres > 0 else 0.0
+            qc_status_text = f"{qc_resolved_pct}% resolved ({passed_count} Passed, {rework_count} Rework, {rejected_count} Rejected, {pending_count} Pending)"
+
+        # Dispatch completion
+        order_dls = dispatch_lines_by_order.get(ord.id, [])
+        dispatched_roll_ids = {dl.rollId for dl in order_dls}
+        dispatched_rolls = [r for r in rolls if r.stockStatus == "DISPATCHED" or r.id in dispatched_roll_ids]
+        dispatched_metres = sum(r.lengthMetres for r in dispatched_rolls)
+        dispatch_pct = round((dispatched_metres / ord.qtyMetres * 100), 1) if ord.qtyMetres > 0 else 0.0
+
+        progress = {
+            "productionProgressPercent": production_pct,
+            "qcReadiness": {
+                "statusText": qc_status_text,
+                "qcResolvedPercent": qc_resolved_pct,
+                "passedCount": passed_count,
+                "reworkCount": rework_count,
+                "rejectedCount": rejected_count,
+                "pendingCount": pending_count,
+            },
+            "dispatchCompletion": {
+                "summaryText": f"{dispatched_metres:.1f} m dispatched",
+                "dispatchPercent": dispatch_pct,
+                "shortfallNote": None,
+            },
+        }
+
+        # Risk calculation (inline, uses already-loaded relationships)
         risk = calculate_order_risk(ord, now)
 
         result.append({
@@ -57,16 +181,17 @@ def list_orders(
             "shortageKg": ord.shortageKg,
             "submittedByBuyer": ord.submittedByBuyer,
             "createdAt": ord.createdAt.isoformat(),
-            "progress": {
-                "production": progress.production,
-                "qc": progress.qc,
-                "dispatch": progress.dispatch,
-            },
-            "risk": risk["risk"],
+            "progress": progress,
+            "risk": risk,
             "riskReason": risk["reason"],
         })
 
-    return result
+    return {
+        "items": result,
+        "total": total,
+        "page": page,
+        "pageSize": page_size
+    }
 
 
 @router.get("/check-yarn")
@@ -74,7 +199,7 @@ def check_yarn_endpoint(
     fabricTypeId: str,
     qtyMetres: float,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER"])),
 ):
     try:
         req = calculate_yarn_requirement(db, fabricTypeId, qtyMetres)
@@ -86,7 +211,7 @@ def check_yarn_endpoint(
 @router.get("/form-data")
 def get_order_form_data(
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER"])),
 ):
     buyers = db.execute(select(Buyer).order_by(Buyer.name.asc())).scalars().all()
     fabric_types = db.execute(select(FabricType).order_by(FabricType.name.asc())).scalars().all()
@@ -111,13 +236,23 @@ def get_order_form_data(
 def get_order_detail(
     id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE", "FLOOR"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "INSPECTION_SUPERVISOR", "MECHANIC", "DISPATCH_OFFICER"])),
 ):
-    ord = db.execute(select(Order).where(Order.id == id)).scalar_one_or_none()
+    from sqlalchemy.orm import selectinload
+    ord = db.execute(
+        select(Order)
+        .where(Order.id == id)
+        .options(
+            selectinload(Order.buyer),
+            selectinload(Order.fabricType),
+            selectinload(Order.workOrders),
+            selectinload(Order.rolls)
+        )
+    ).scalar_one_or_none()
     if not ord:
         raise HTTPException(status_code=404, detail=f"Order {id} not found")
 
-    progress = get_order_progress(db, ord.id)
+    progress = get_order_progress(db=db, order=ord)
     risk = calculate_order_risk(ord, datetime.now(timezone.utc))
     cost = get_order_cost(db, ord.id)
 
@@ -197,12 +332,8 @@ def get_order_detail(
             }
             for m in movements
         ],
-        "progress": {
-            "production": progress.production,
-            "qc": progress.qc,
-            "dispatch": progress.dispatch,
-        },
-        "risk": risk["risk"],
+        "progress": dict(progress),
+        "risk": risk,
         "riskReason": risk["reason"],
         "cost": cost,
     }
@@ -212,8 +343,11 @@ def get_order_detail(
 def create_order_endpoint(
     req: CreateOrderRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER"])),
 ):
+    if not req.buyerId:
+        raise HTTPException(status_code=400, detail="buyerId is required")
+
     try:
         deadline_dt = datetime.fromisoformat(req.deadline.replace("Z", "+00:00"))
         if deadline_dt.tzinfo is None:
@@ -246,7 +380,7 @@ def review_order_endpoint(
     id: str,
     req: ReviewOrderRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER"])),
 ):
     try:
         order = review_buyer_order(
@@ -267,7 +401,7 @@ def cancel_order_endpoint(
     id: str,
     req: CancelOrderRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER"])),
 ):
     try:
         order = cancel_order(

@@ -23,10 +23,10 @@ def test_orders_endpoints(client, office_headers):
     response = client.get("/api/v1/orders", headers=office_headers)
     assert response.status_code == 200
     orders = response.json()
-    assert len(orders) >= 11  # 11 deterministic orders in seed
+    assert len(orders["items"]) >= 11  # 11 deterministic orders in seed
 
     # Test GET /orders/check-yarn
-    first_order_id = orders[0]["id"]
+    first_order_id = orders["items"][0]["id"]
     order_detail_res = client.get(f"/api/v1/orders/{first_order_id}", headers=office_headers)
     assert order_detail_res.status_code == 200
     detail = order_detail_res.json()
@@ -107,4 +107,5 @@ def test_buyer_portal_endpoints(client, buyer_headers):
     # GET /buyer/invoices
     inv_response = client.get("/api/v1/buyer/invoices", headers=buyer_headers)
     assert inv_response.status_code == 200
-    assert isinstance(inv_response.json(), list)
+    assert "items" in inv_response.json()
+    assert isinstance(inv_response.json()["items"], list)

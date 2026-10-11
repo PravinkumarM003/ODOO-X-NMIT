@@ -25,15 +25,35 @@ def mark_attendance(
     shift: str,
     status: str,
     overtime_hours: float = 0.0,
+    check_in: Optional[str] = None,
+    check_out: Optional[str] = None,
+    user_role: str = "ADMINISTRATOR",
 ) -> Attendance:
+    # Business Rule 1: Validate overtime hours is non-negative
+    if overtime_hours < 0:
+        raise ValueError("Overtime hours cannot be negative")
+
+    # Business Rule 2: Force overtime = 0.0 if status is ABSENT or LEAVE
+    if status in ("ABSENT", "LEAVE"):
+        overtime_hours = 0.0
+
     att = db.execute(
         select(Attendance).where(Attendance.employeeId == employee_id, Attendance.date == date)
     ).scalar_one_or_none()
+
+    # Permission Rule: Non-ADMINISTRATOR cannot modify an already submitted attendance record
+    if att is not None and user_role != "ADMINISTRATOR":
+        raise PermissionError("Attendance record for this date is locked. Only Administrators can modify submitted records.")
+
+    ci_dt = datetime.fromisoformat(check_in.replace("Z", "+00:00")) if check_in else None
+    co_dt = datetime.fromisoformat(check_out.replace("Z", "+00:00")) if check_out else None
 
     if att:
         att.shift = shift
         att.status = status
         att.overtimeHours = overtime_hours
+        if ci_dt: att.checkIn = ci_dt
+        if co_dt: att.checkOut = co_dt
     else:
         att = Attendance(
             employeeId=employee_id,
@@ -41,6 +61,8 @@ def mark_attendance(
             shift=shift,
             status=status,
             overtimeHours=overtime_hours,
+            checkIn=ci_dt,
+            checkOut=co_dt,
         )
         db.add(att)
 
@@ -51,22 +73,34 @@ def mark_attendance(
 
 def get_monthly_wages(db: Session, month: str) -> List[Dict[str, Any]]:
     employees = db.execute(select(Employee).order_by(Employee.empNo.asc())).scalars().all()
+    if not employees:
+        return []
+
+    emp_ids = [e.id for e in employees]
+    all_attendances = db.execute(
+        select(Attendance).where(
+            Attendance.employeeId.in_(emp_ids),
+            Attendance.date.startswith(month)
+        )
+    ).scalars().all()
+
+    all_summaries = db.execute(
+        select(WageSummary).where(
+            WageSummary.employeeId.in_(emp_ids),
+            WageSummary.month == month
+        )
+    ).scalars().all()
+
+    att_map: Dict[str, list] = {}
+    for a in all_attendances:
+        att_map.setdefault(a.employeeId, []).append(a)
+
+    summary_map = {s.employeeId: s for s in all_summaries}
 
     result = []
     for emp in employees:
-        attendances = db.execute(
-            select(Attendance).where(
-                Attendance.employeeId == emp.id,
-                Attendance.date.startswith(month)
-            )
-        ).scalars().all()
-
-        summary = db.execute(
-            select(WageSummary).where(
-                WageSummary.employeeId == emp.id,
-                WageSummary.month == month
-            )
-        ).scalar_one_or_none()
+        attendances = att_map.get(emp.id, [])
+        summary = summary_map.get(emp.id)
 
         days_present = sum(1 for a in attendances if a.status == "PRESENT")
         overtime_hours = sum(a.overtimeHours for a in attendances)
@@ -161,38 +195,26 @@ def mark_wages_paid(
     return len(summaries)
 
 
-def get_order_cost(db: Session, order_id: str) -> Dict[str, Any]:
-    order = db.execute(select(Order).where(Order.id == order_id)).scalar_one_or_none()
-    if not order:
-        raise ValueError(f"Order {order_id} not found")
-
-    consume_movements = db.execute(
-        select(StockMovement).where(
-            StockMovement.orderId == order.id,
-            StockMovement.type == "CONSUME"
-        )
-    ).scalars().all()
-
+def calculate_order_cost_obj(order: Order) -> Dict[str, Any]:
     yarn_cost = 0.0
     yarn_consumed_kg = 0.0
     has_missing_yarn_cost = False
 
-    for m in consume_movements:
-        yarn_consumed_kg += m.qtyKg
-        if m.lot:
-            yarn_cost += m.qtyKg * m.lot.unitCostPerKg
-        else:
-            has_missing_yarn_cost = True
+    for m in order.stockMovements:
+        if m.type == "CONSUME":
+            yarn_consumed_kg += m.qtyKg
+            if m.lot:
+                yarn_cost += m.qtyKg * m.lot.unitCostPerKg
+            else:
+                has_missing_yarn_cost = True
 
-    work_orders = db.execute(select(WorkOrder).where(WorkOrder.orderId == order.id)).scalars().all()
     labour_cost = 0.0
     machine_cost = 0.0
     total_hours = 0.0
 
-    for wo in work_orders:
+    for wo in order.workOrders:
         machine_rate = wo.machine.hourlyRate if wo.machine else 0.0
-        logs = db.execute(select(ProductionLog).where(ProductionLog.workOrderId == wo.id)).scalars().all()
-        for log in logs:
+        for log in wo.productionLogs:
             total_hours += log.hours
             hourly_wage = (log.employee.dailyWage / 8.0) if log.employee else 0.0
             labour_cost += log.hours * hourly_wage
@@ -203,8 +225,7 @@ def get_order_cost(db: Session, order_id: str) -> Dict[str, Any]:
     machine_cost = round(machine_cost, 2)
     total_cost = round(yarn_cost + labour_cost + machine_cost, 2)
 
-    invoices = db.execute(select(Invoice).where(Invoice.orderId == order.id)).scalars().all()
-    invoiced_revenue = round(sum(inv.amount for inv in invoices), 2)
+    invoiced_revenue = round(sum(inv.amount for inv in order.invoices), 2)
     margin = round(invoiced_revenue - total_cost, 2)
 
     rolls = order.rolls
@@ -231,6 +252,24 @@ def get_order_cost(db: Session, order_id: str) -> Dict[str, Any]:
         "costPerGoodMetre": cost_per_good_metre,
         "isCostIncomplete": is_cost_incomplete,
     }
+
+
+def get_order_cost(db: Session, order_id: str) -> Dict[str, Any]:
+    from sqlalchemy.orm import selectinload
+    order = db.execute(
+        select(Order)
+        .where(Order.id == order_id)
+        .options(
+            selectinload(Order.stockMovements).selectinload(StockMovement.lot),
+            selectinload(Order.workOrders).selectinload(WorkOrder.productionLogs).selectinload(ProductionLog.employee),
+            selectinload(Order.workOrders).selectinload(WorkOrder.machine),
+            selectinload(Order.invoices),
+            selectinload(Order.rolls),
+        )
+    ).scalar_one_or_none()
+    if not order:
+        raise ValueError(f"Order {order_id} not found")
+    return calculate_order_cost_obj(order)
 
 
 def calculate_order_risk(order: Any, now: Optional[datetime] = None) -> Dict[str, str]:
@@ -309,30 +348,39 @@ def get_monthly_finance(db: Session, month: str) -> Dict[str, Any]:
         next_month_date = datetime(year, m + 1, 1, tzinfo=timezone.utc)
 
     # 1. CASH IN: Payments received in month
+    from sqlalchemy.orm import selectinload, joinedload
     payments = db.execute(
-        select(Payment).where(
+        select(Payment)
+        .where(
             Payment.receivedAt >= start_of_month,
             Payment.receivedAt < next_month_date
+        )
+        .options(
+            selectinload(Payment.invoice).selectinload(Invoice.order).selectinload(Order.buyer)
         )
     ).scalars().all()
     cash_in = round(sum(p.amount for p in payments), 2)
 
     # 2. CASH OUT: Paid SupplierBills + Paid WageSummary in month
     paid_supplier_bills = db.execute(
-        select(SupplierBill).where(
+        select(SupplierBill)
+        .where(
             SupplierBill.status == "PAID",
             SupplierBill.paidAt >= start_of_month,
             SupplierBill.paidAt < next_month_date
         )
+        .options(selectinload(SupplierBill.supplier))
     ).scalars().all()
     supplier_cash_out = round(sum(b.amount for b in paid_supplier_bills), 2)
 
     paid_wages = db.execute(
-        select(WageSummary).where(
+        select(WageSummary)
+        .where(
             WageSummary.paidAt != None,
             WageSummary.paidAt >= start_of_month,
             WageSummary.paidAt < next_month_date
         )
+        .options(selectinload(WageSummary.employee))
     ).scalars().all()
     wage_cash_out = round(sum(w.paidAmount if w.paidAmount is not None else w.amount for w in paid_wages), 2)
 
@@ -341,7 +389,9 @@ def get_monthly_finance(db: Session, month: str) -> Dict[str, Any]:
 
     # 3. OUTSTANDING OBLIGATIONS & RECEIVABLES (Labelled "Not cash")
     unpaid_supplier_bills = db.execute(
-        select(SupplierBill).where(SupplierBill.status == "UNPAID")
+        select(SupplierBill)
+        .where(SupplierBill.status == "UNPAID")
+        .options(selectinload(SupplierBill.supplier))
     ).scalars().all()
     unpaid_supplier_bills_total = round(sum(b.amount for b in unpaid_supplier_bills), 2)
 
@@ -350,7 +400,12 @@ def get_monthly_finance(db: Session, month: str) -> Dict[str, Any]:
     unpaid_wages_total = round(sum(w["amount"] for w in unpaid_wages_list), 2)
 
     unpaid_invoices = db.execute(
-        select(Invoice).where(Invoice.status.in_(["UNPAID", "PARTIAL"]))
+        select(Invoice)
+        .where(Invoice.status.in_(["UNPAID", "PARTIAL"]))
+        .options(
+            selectinload(Invoice.payments),
+            selectinload(Invoice.order).selectinload(Order.buyer)
+        )
     ).scalars().all()
     unpaid_invoices_total = 0.0
     for inv in unpaid_invoices:
@@ -358,24 +413,27 @@ def get_monthly_finance(db: Session, month: str) -> Dict[str, Any]:
         unpaid_invoices_total += (inv.amount - paid_amt)
     unpaid_invoices_total = round(unpaid_invoices_total, 2)
 
-    # 4. Machine output for the month
+    # 4. Machine output for the month (single aggregated query)
+    mach_logs = db.execute(
+        select(
+            WorkOrder.machineId,
+            func.sum(ProductionLog.qtyMetres).label("tot_metres"),
+            func.sum(ProductionLog.hours).label("tot_hours")
+        )
+        .join(ProductionLog, ProductionLog.workOrderId == WorkOrder.id)
+        .where(
+            ProductionLog.loggedAt >= start_of_month,
+            ProductionLog.loggedAt < next_month_date,
+            WorkOrder.machineId != None
+        )
+        .group_by(WorkOrder.machineId)
+    ).all()
+    mach_stats_map = {m_id: (float(tot_m or 0.0), float(tot_h or 0.0)) for m_id, tot_m, tot_h in mach_logs}
+
     machines = db.execute(select(Machine)).scalars().all()
     machine_outputs = []
     for mach in machines:
-        metres = 0.0
-        hours = 0.0
-        for wo in mach.workOrders:
-            logs = db.execute(
-                select(ProductionLog).where(
-                    ProductionLog.workOrderId == wo.id,
-                    ProductionLog.loggedAt >= start_of_month,
-                    ProductionLog.loggedAt < next_month_date
-                )
-            ).scalars().all()
-            for log in logs:
-                metres += log.qtyMetres
-                hours += log.hours
-
+        metres, hours = mach_stats_map.get(mach.id, (0.0, 0.0))
         machine_outputs.append({
             "machineId": mach.id,
             "code": mach.code,
@@ -385,9 +443,21 @@ def get_monthly_finance(db: Session, month: str) -> Dict[str, Any]:
             "hoursWorked": round(hours, 2),
         })
 
-    # 5. Order costing list for completed / active orders
+    # 5. Order costing list for active/recent orders (limit 50 to prevent N*M explosion)
     orders = db.execute(
-        select(Order).where(Order.status != "CANCELLED")
+        select(Order)
+        .where(Order.status != "CANCELLED")
+        .order_by(Order.createdAt.desc())
+        .limit(50)
+        .options(
+            selectinload(Order.buyer),
+            selectinload(Order.fabricType),
+            selectinload(Order.stockMovements).selectinload(StockMovement.lot),
+            selectinload(Order.workOrders).selectinload(WorkOrder.productionLogs).selectinload(ProductionLog.employee),
+            selectinload(Order.workOrders).selectinload(WorkOrder.machine),
+            selectinload(Order.invoices),
+            selectinload(Order.rolls)
+        )
     ).scalars().all()
 
     order_costings = []
@@ -395,7 +465,7 @@ def get_monthly_finance(db: Session, month: str) -> Dict[str, Any]:
     total_order_cost = 0.0
 
     for ord in orders:
-        cost = get_order_cost(db, ord.id)
+        cost = calculate_order_cost_obj(ord)
         cost_with_meta = {
             **cost,
             "buyerName": ord.buyer.name if ord.buyer else "",
@@ -482,4 +552,5 @@ def get_monthly_finance(db: Session, month: str) -> Dict[str, Any]:
         "totalInvoicedRevenue": round(total_invoiced_revenue, 2),
         "totalOrderCost": round(total_order_cost, 2),
         "orderMargin": order_margin,
+        "wages": all_month_wages,
     }

@@ -22,8 +22,26 @@ Single source of truth for progress. Source specification: `TexFlow_Build_Prompt
 | Final: regression, demo, critical fixes | 2.5 h | DONE | all 1 to 32 |
 | Backend Migration: Python FastAPI | 4.0 h | DONE | All 20 Pytest backend tests & all 32 acceptance tests |
 | **Professional Architecture Restructuring** | **2.0 h** | **DONE** | **Frontend Next.js build (0 errors) + 32/32 Acceptance + 20/20 Pytest** |
+| **Full Functional Audit and Repair** | **3.0 h** | **DONE** | **10/10 Live Real Workflows PASS + 20/20 Pytest PASS + Next.js build clean** |
 
-Feature freeze after M5 observed: prevents new scope additions or out-of-scope features after M5, but planned milestones M6 (Buyer Portal), M7 (People & Finance), M8 (Overview & Polish), Final regression stage, the required Python FastAPI backend migration, and the professional architecture restructuring proceed as scheduled.
+Feature freeze after M5 observed: prevents new scope additions or out-of-scope features after M5, but planned milestones M6 (Buyer Portal), M7 (People & Finance), M8 (Overview & Polish), Final regression stage, the required Python FastAPI backend migration, the professional architecture restructuring, and the functional audit & repair proceed as scheduled.
+
+---
+
+## Full Functional Audit and Repair (Completed & Verified)
+
+| ID | Task | Acceptance criteria | Status | Result |
+|---|---|---|---|---|
+| FA-1 | Orders Schema & Risk Harmonization | Ensure `GET /orders` returns nested `progress` object (with `qcReadiness` & `dispatchCompletion`) and structured `risk: {risk, reason}` | DONE | PASS: Fixed in `orders.py`; OrderListClient & OrderDetailClient render live risk badges and progress bars without TypeError |
+| FA-2 | Production Board Stage Precedence & Visibility | Ensure running machines show active work order and idle machines show BR-08 stage lock / assign button (`canStart`, `blockReason`) | DONE | PASS: Fixed in `production.py`; `currentWorkOrder`, `activeDowntime`, and BR-08 precedence allow Floor operators to assign machines and log output |
+| FA-3 | Rolls Registry & 4-Section Store View (BR-18) | Provide top-level `rolls`, `store` (shelf, awaitingQC, quarantined, dispatched), `machineDefects`, and `eligibleOrders` with registeredMetres | DONE | PASS: Fixed in `rolls.py`; RollsQCClient displays all 28 rolls, machine defect rates, and quarantine isolation |
+| FA-4 | Dispatch & Commercial Invoice Ledger (BR-15, BR-17) | Expose `storeView`, `eligibleRolls` (filtered to PASSED & IN_STORE), `disabledRolls`, and nested invoice `payments`, `dispatch`, `order` | DONE | PASS: Fixed in `dispatch.py`; DispatchClient handles tab switching between Ready Queue, Store View, and Invoices ledger seamlessly |
+| FA-5 | Administrator Finance Statement & Wages Payroll (BR-21, BR-26) | Return complete `wages` array alongside Result Line 1 (Net Cash Movement) and Result Line 2 (Order Margin); distinct Closed vs Paid states | DONE | PASS: Fixed in `finance_service.py`; 12 employee wages visible, Close Month freezes WageSummary, and Mark Paid updates cash out |
+| FA-6 | Buyer Portal Order Creation & Tracking (BR-24) | Allow buyers to submit new order requests without specifying buyerId (inferred securely from authenticated user session) | DONE | PASS: Fixed in `orders.py` schema; Buyer orders submitted via `/buyer/orders` persist cleanly in TiDB |
+| FA-7 | Roll Passport Interactive Print Button | Enable physical printing of passport via `window.print()` from client component without SSR onClick failure | DONE | PASS: Replaced broken button with `PrintButton.tsx` in `rolls/[id]/page.tsx` |
+| FA-8 | Pytest Automated Test Suite | Verify all unit and workflow tests pass against FastAPI backend and TiDB database | DONE | PASS: 20 / 20 Pytest tests PASSED (0 FAIL) in `backend/tests/` |
+| FA-9 | End-to-End Live Workflow Suite | Test all business workflows against live backend: Buyer login/order, Manager review, Production board, Rolls QC, Dispatch, Invoices, Finance, and Overview | DONE | PASS: 10 / 10 live workflows PASSED in `scratch/test_live_e2e_workflows.py` |
+| FA-10 | Next.js Production Build & TypeScript Verification | Run production Next.js compiler across all 19 routes | DONE | PASS: `npm run build` compiled 19 routes with 0 errors |
 
 ---
 
@@ -62,7 +80,7 @@ Feature freeze after M5 observed: prevents new scope additions or out-of-scope f
 |---|---|---|---|---|
 | M0-1 | Scaffold Next.js + TypeScript + Tailwind + Prisma/SQLite; scripts for dev, build, typecheck, test, seed; `git init` | App starts; `build`, typecheck and `npm test` run; first commit made | DONE | PASS: Git initialized, Turbopack next build & tsc pass cleanly |
 | M0-2 | Prisma schema for all section 4 entities and migration | Migration succeeds; unique constraints exist (DispatchLine.rollId, Attendance employee+date, WageSummary employee+month, Order.orderNo, Roll.rollNo) | DONE | PASS: Prisma 6.4.1 schema pushed with all unique constraints & indexes |
-| M0-3 | Auth and server-side role guards (OWNER, OFFICE, FLOOR, BUYER) | Login and logout work; restricted route and direct API call return a clear forbidden state; buyers scoped by buyerId | DONE | PASS: Web Crypto HMAC signed cookie auth, requireRole server guards |
+| M0-3 | Auth and server-side role guards (ADMINISTRATOR, MANAGER, FLOOR, BUYER) | Login and logout work; restricted route and direct API call return a clear forbidden state; buyers scoped by buyerId | DONE | PASS: Web Crypto HMAC signed cookie auth, requireRole server guards |
 | M0-4 | Inspect workspace for a Stitch export (10.1); app shell and design tokens | Report states whether an export was found and lists files; shell uses section 10 tokens; desktop sidebar and mobile drawer work | DONE | PASS: Test 30 PASS (Inspected: No Stitch files present; Section 10 brand tokens applied) |
 | M0-5 | Seed script with self-check; 7 demo accounts; sign-in helper | `npm run seed` rebuilds DB; M0 self-check verifies documented counts (4 buyers, 4 buyer logins, 11 orders, 28 rolls, 8 machines, 12 employees, 3 dispatches, 3 invoices); all 7 accounts log in; README lists same accounts and counts. Add derived-status assertion after `recomputeOrderStatus` exists in M5-6. | DONE | PASS: Test 29 preliminary checks verified in M0; full derived-status validation completed after M5-6 |
 
@@ -86,7 +104,7 @@ Note: the auto-allocation of BR-06 needs orders, so its hook is wired in M2-3.
 | M2-2 | Create order with live yarn check (BR-04) | Panel shows required, available, shortage; message matches | DONE | PASS: Test 2 PASS (Live yarn check panel shows required, available, shortage) |
 | M2-3 | Confirm order: reserve or AWAITING_YARN (BR-05); auto-allocation on receipt (BR-06) | Enough yarn reserves full amount and sets CONFIRMED; shortage reserves nothing; receiving yarn releases waiting orders earliest deadline first with a toast | DONE | PASS: Tests 3, 4 PASS (Sufficient yarn reserves & confirms; shortage sets AWAITING_YARN) |
 | M2-4 | Cancel with required reason (BR-07) | Blocked without reason or after work started; releases exact outstanding reservation | DONE | PASS: Required reason (min 5 chars) enforced, outstanding reservation released |
-| M2-5 | Office review of the seeded NEW order (BR-24 approve and cancel) | Approve runs BR-04 and BR-05; cancel needs reason; non-NEW rejected; only Office and Owner | DONE | PASS: Test 24 PASS (Office Review panel on NEW order works end to end) |
+| M2-5 | Manager review of the seeded NEW order (BR-24 approve and cancel) | Approve runs BR-04 and BR-05; cancel needs reason; non-NEW rejected; only Manager and Administrator | DONE | PASS: Test 24 PASS (Manager Review panel on NEW order works end to end) |
 | M2-6 | Orders list and detail screens | List shows risk placeholders and "Needs review" filter; detail shows yarn requirement and reservation | DONE | PASS: Orders list with "Needs review" filter and full detail screen functional |
 
 ## M3: Production (3.5 h)
@@ -127,14 +145,14 @@ Note: the auto-allocation of BR-06 needs orders, so its hook is wired in M2-3.
 |---|---|---|---|---|
 | M6-1 | My Orders and order detail in buyer wording | Own buyer only (UI and direct API); no costs or internal notes | DONE | PASS: Test 17 PASS (Buyer strictly scoped to own buyerId; plain status wording) |
 | M6-2 | Live status link to floor data | Floor logging shows on the buyer view after refresh with no manual step | DONE | PASS: Test 18 PASS (Buyer view updates instantly when floor logs production or QC) |
-| M6-3 | Request order form and buyer invoices | Creates NEW order flagged Submitted by buyer; Office approve and cancel flow works end to end | DONE | PASS: Test 24 PASS (Buyer request order creates NEW; Office reviews and approves) |
+| M6-3 | Request order form and buyer invoices | Creates NEW order flagged Submitted by buyer; Manager approve and cancel flow works end to end | DONE | PASS: Test 24 PASS (Buyer request order creates NEW; Manager reviews and approves) |
 
 ## M7: People, cost, finance (2.5 h)
 
 | ID | Task | Acceptance criteria | Status | Result |
 |---|---|---|---|---|
 | M7-1 | Employees and daily attendance register (BR-20) | One record per employee per date; fast default Present | DONE | PASS: Daily attendance register with Present default and fast exceptions |
-| M7-2 | Wages, month close, WageSummary (BR-21) | Calculated, Closed (not recorded as paid), Paid states; Owner only | DONE | PASS: Test 28 PASS (Wages visible to Owner only; Closed vs Paid states distinct) |
+| M7-2 | Wages, month close, WageSummary (BR-21) | Calculated, Closed (not recorded as paid), Paid states; Administrator only | DONE | PASS: Test 28 PASS (Wages visible to Administrator only; Closed vs Paid states distinct) |
 | M7-3 | Order cost and margin (BR-22) | Cost updates when lot cost or wage changes; "Cost incomplete" when records missing | DONE | PASS: Test 19 PASS (Order costing includes yarn, labour, machine costs; margin computed) |
 | M7-4 | Finance screen and Mark paid actions (BR-26) | Cash in and out use recorded dates only; obligations panel separate and labelled Not cash; two result lines never merged | DONE | PASS: Tests 20, 27 PASS (Cash in/out use recorded dates only; obligations separate) |
 
@@ -145,7 +163,7 @@ Note: the auto-allocation of BR-06 needs orders, so its hook is wired in M2-3.
 | M8-1 | Overview dashboard (7.2) | Attention strip first; all figures from real data; layout follows approved design if present | DONE | PASS: Executive overview with real attention strip, metrics tiles, stage pipeline |
 | M8-2 | Notifications and order risk (BR-23) | Severity labels; no fake counters; every item links to its record | DONE | PASS: Computed real notifications bell menu linking directly to problem records |
 | M8-3 | Responsive pass, cross-screen progress consistency and honest states | Production, QC, yarn receipt and attendance usable at 390px with no horizontal scroll; empty, loading and error states exist; full Test 25 agrees across Orders list/detail, Buyer Portal and Overview | DONE | PASS: Tests 22, 25 PASS (390px mobile layout verified; Test 25 cross-screen agreement passes across all screens) |
-| M8-4 | Permissions sweep | Floor cannot reach Finance, prices or invoices; Office cannot see wage totals; direct API calls refused | DONE | PASS: Test 21 PASS (Server role guards reject unauthorized access across all endpoints) |
+| M8-4 | Permissions sweep | Floor cannot reach Finance, prices or invoices; Manager cannot see wage totals; direct API calls refused | DONE | PASS: Test 21 PASS (Server role guards reject unauthorized access across all endpoints) |
 
 ## Final stage: regression, demo, critical fixes (2.5 h)
 
@@ -175,7 +193,7 @@ Note: the auto-allocation of BR-06 needs orders, so its hook is wired in M2-3.
 | M4 | Roll registration, QC inspections, passport | Tests 10, 11: PASS | None | M5 Dispatch |
 | M5 | Dispatch, invoices, 4-section store view, payments | Tests 12, 13, 14, 15, 16, 26, 31, 32 (completing full Test 29): PASS | None | M6 Buyer portal |
 | M6 | Buyer portal, plain status wording, order request | Tests 17, 18, 24: PASS | None | M7 People & Finance |
-| M7 | People, attendance register, Owner finance, wages | Tests 19, 20, 27, 28: PASS | None | M8 Overview & polish |
+| M7 | People, attendance register, Administrator finance, wages | Tests 19, 20, 27, 28: PASS | None | M8 Overview & polish |
 | M8 | Overview dashboard, notifications bell, responsive pass, cross-screen check | Tests 21, 22, full cross-screen Test 25: PASS | None | Final regression |
 | Final | Full regression runner, build optimization, documentation | Tests 1 to 32: ALL 32 PASSED (0 FAIL) | None | Complete |
 | **PY** | **Full Python FastAPI backend migration, SQLAlchemy 2.0 ORM, Alembic migrations, Pytest suite, Next.js API client integration** | **Pytest 20/20 PASSED; Acceptance 32/32 PASSED; Next.js build clean** | **None** | **Production ready** |

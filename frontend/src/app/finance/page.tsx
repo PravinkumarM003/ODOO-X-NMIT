@@ -1,6 +1,5 @@
 import { requireRole } from "@/lib/auth";
 import { apiClient } from "@/lib/apiClient";
-import AppShell from "@/components/layout/AppShell";
 import FinanceClient from "./FinanceClient";
 import Forbidden from "@/components/common/Forbidden";
 
@@ -13,11 +12,11 @@ export default async function FinancePage({
 }) {
   let user;
   try {
-    user = await requireRole(["OWNER"]);
+    user = await requireRole(["ADMINISTRATOR"]);
   } catch {
     return (
       <div className="p-8">
-        <Forbidden message="Financial statements, margins, and wage payrolls are strictly restricted to the OWNER role." />
+        <Forbidden message="Financial statements, margins, and wage payrolls are strictly restricted to the ADMINISTRATOR role." />
       </div>
     );
   }
@@ -32,6 +31,14 @@ export default async function FinancePage({
     cashIn: 0,
     cashOut: 0,
     netCashMovement: 0,
+    orderMargin: 0,
+    totalInvoicedRevenue: 0,
+    totalOrderCost: 0,
+    supplierCashOut: 0,
+    wageCashOut: 0,
+    unpaidSupplierBillsTotal: 0,
+    unpaidWagesTotal: 0,
+    unpaidInvoicesTotal: 0,
     machineOutputMetres: 0,
     unpaidCustomerTotal: 0,
     unpaidSupplierTotal: 0,
@@ -39,26 +46,29 @@ export default async function FinancePage({
     unpaidObligationsTotal: 0,
     payments: [],
     supplierBills: [],
+    paidSupplierBills: [],
+    paidWages: [],
+    unpaidSupplierBills: [],
+    unpaidWagesList: [],
+    unpaidInvoices: [],
+    orderCostings: [],
+    machineOutputs: [],
     wages: [],
   };
-  let notifications: any[] = [];
-
-  try {
-    const [finRes, notifRes] = await Promise.all([
+    try {
+    const [finRes] = await Promise.all([
       apiClient.get<any>(`/finance?month=${selectedMonth}`),
-      apiClient.get<any[]>("/notifications"),
     ]);
     if (finRes) financeData = finRes;
-    if (notifRes) notifications = notifRes;
-  } catch {}
+      } catch {}
 
   return (
-    <AppShell user={user} notifications={notifications}>
+    <>
       <FinanceClient
         finance={financeData}
         wages={financeData.wages || []}
         selectedMonth={selectedMonth}
       />
-    </AppShell>
+    </>
   );
 }

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -25,23 +25,70 @@ router = APIRouter(tags=["Buyers & Suppliers"])
 
 @router.get("/buyers")
 def list_buyers(
+    search: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query("name"),
+    sort_order: Optional[str] = Query("asc"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER"])),
 ):
-    buyers = db.execute(select(Buyer).order_by(Buyer.name.asc())).scalars().all()
+    query = select(Buyer)
+    if search:
+        search_term = f"%{search.lower()}%"
+        from sqlalchemy import func, or_
+        query = query.where(
+            or_(
+                func.lower(Buyer.name).like(search_term),
+                func.lower(Buyer.contactPerson).like(search_term)
+            )
+        )
+    sort_col_map = {
+        "name": Buyer.name,
+        "contactPerson": Buyer.contactPerson,
+        "email": Buyer.email,
+        "createdAt": Buyer.id,
+    }
+    target_col = sort_col_map.get(sort_by, Buyer.name)
+    direction = sort_order.lower() if sort_order else "asc"
+    order_clause = target_col.asc() if direction == "asc" else target_col.desc()
+    query = query.order_by(order_clause, Buyer.id.desc())
+    
+    from sqlalchemy import func
+    total = db.scalar(select(func.count()).select_from(query.with_only_columns(Buyer.id).subquery()))
+    buyers = db.execute(query.offset((page - 1) * page_size).limit(page_size)).scalars().all()
+
+    buyer_ids = [b.id for b in buyers]
+    if buyer_ids:
+        order_counts_res = db.execute(
+            select(Order.buyerId, func.count(Order.id)).where(Order.buyerId.in_(buyer_ids)).group_by(Order.buyerId)
+        ).all()
+        order_counts_map = {b_id: count for b_id, count in order_counts_res}
+
+        inv_res = db.execute(
+            select(Order.buyerId, func.sum(Invoice.amount))
+            .join(Invoice, Invoice.orderId == Order.id)
+            .where(Order.buyerId.in_(buyer_ids))
+            .group_by(Order.buyerId)
+        ).all()
+        inv_map = {b_id: float(tot or 0.0) for b_id, tot in inv_res}
+
+        pay_res = db.execute(
+            select(Order.buyerId, func.sum(Payment.amount))
+            .join(Invoice, Invoice.orderId == Order.id)
+            .join(Payment, Payment.invoiceId == Invoice.id)
+            .where(Order.buyerId.in_(buyer_ids))
+            .group_by(Order.buyerId)
+        ).all()
+        pay_map = {b_id: float(tot or 0.0) for b_id, tot in pay_res}
+    else:
+        order_counts_map, inv_map, pay_map = {}, {}, {}
 
     result = []
     for b in buyers:
-        total_invoiced = 0.0
-        total_paid = 0.0
-
-        for ord in b.orders:
-            for inv in ord.invoices:
-                total_invoiced += inv.amount
-                for p in inv.payments:
-                    total_paid += p.amount
-
-        outstanding_balance = round(total_invoiced - total_paid, 2)
+        tot_invoiced = round(inv_map.get(b.id, 0.0), 2)
+        tot_paid = round(pay_map.get(b.id, 0.0), 2)
+        outstanding_balance = round(tot_invoiced - tot_paid, 2)
 
         result.append({
             "id": b.id,
@@ -50,20 +97,25 @@ def list_buyers(
             "email": b.email,
             "phone": b.phone,
             "address": b.address,
-            "orderCount": len(b.orders),
-            "totalInvoiced": round(total_invoiced, 2),
-            "totalPaid": round(total_paid, 2),
+            "orderCount": order_counts_map.get(b.id, 0),
+            "totalInvoiced": tot_invoiced,
+            "totalPaid": tot_paid,
             "outstandingBalance": outstanding_balance,
         })
 
-    return result
+    return {
+        "items": result,
+        "total": total,
+        "page": page,
+        "pageSize": page_size
+    }
 
 
 @router.post("/buyers")
 def create_buyer_endpoint(
     req: CreateBuyerRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER"])),
 ):
     try:
         buyer = create_buyer(
@@ -83,10 +135,38 @@ def create_buyer_endpoint(
 
 @router.get("/suppliers")
 def list_suppliers(
+    search: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query("name"),
+    sort_order: Optional[str] = Query("asc"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER"])),
 ):
-    suppliers = db.execute(select(Supplier).order_by(Supplier.name.asc())).scalars().all()
+    query = select(Supplier)
+    if search:
+        search_term = f"%{search.lower()}%"
+        from sqlalchemy import func, or_
+        query = query.where(
+            or_(
+                func.lower(Supplier.name).like(search_term),
+                func.lower(Supplier.contactPerson).like(search_term)
+            )
+        )
+    sort_col_map = {
+        "name": Supplier.name,
+        "contactPerson": Supplier.contactPerson,
+        "phone": Supplier.phone,
+        "createdAt": Supplier.id,
+    }
+    target_col = sort_col_map.get(sort_by, Supplier.name)
+    direction = sort_order.lower() if sort_order else "asc"
+    order_clause = target_col.asc() if direction == "asc" else target_col.desc()
+    query = query.order_by(order_clause, Supplier.id.desc())
+    
+    from sqlalchemy import func
+    total = db.scalar(select(func.count()).select_from(query.with_only_columns(Supplier.id).subquery()))
+    suppliers = db.execute(query.offset((page - 1) * page_size).limit(page_size)).scalars().all()
 
     result = []
     for s in suppliers:
@@ -119,14 +199,19 @@ def list_suppliers(
             ],
         })
 
-    return result
+    return {
+        "items": result,
+        "total": total,
+        "page": page,
+        "pageSize": page_size
+    }
 
 
 @router.post("/suppliers")
 def create_supplier_endpoint(
     req: CreateSupplierRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER"])),
 ):
     try:
         supplier = create_supplier(
@@ -145,7 +230,7 @@ def pay_supplier_bill_endpoint(
     id: str,
     req: MarkSupplierBillPaidRequest = None,
     db: Session = Depends(get_db),
-    current_user=Depends(require_role(["OWNER", "OFFICE"])),
+    current_user=Depends(require_role(["ADMINISTRATOR", "MANAGER"])),
 ):
     try:
         paid_at = None

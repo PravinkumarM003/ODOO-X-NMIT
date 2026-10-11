@@ -8,6 +8,8 @@ class MarkAttendanceRequest(BaseModel):
     shift: str  # MORNING, EVENING, NIGHT
     status: str  # PRESENT, ABSENT, LEAVE
     overtimeHours: Optional[float] = 0.0
+    checkIn: Optional[str] = None
+    checkOut: Optional[str] = None
 
 
 class CloseMonthWagesRequest(BaseModel):

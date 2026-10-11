@@ -3,13 +3,14 @@ from pydantic import BaseModel
 
 
 class CreateOrderRequest(BaseModel):
-    buyerId: str
+    buyerId: Optional[str] = None
     fabricTypeId: str
     colour: str
     qtyMetres: float
     deadline: str  # ISO string or YYYY-MM-DD
     pricePerMetre: Optional[float] = None
     submittedByBuyer: Optional[bool] = False
+    notes: Optional[str] = None
 
 
 class ReviewOrderRequest(BaseModel):
