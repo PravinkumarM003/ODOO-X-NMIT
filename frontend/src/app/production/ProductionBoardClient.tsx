@@ -17,6 +17,7 @@ import {
   ExternalLink,
   X,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import {
   assignMachineAction,
@@ -26,6 +27,7 @@ import {
   resolveBreakdownAction,
   reassignWorkOrderAction,
 } from "@/app/actions/productionActions";
+import { apiClient } from "@/lib/apiClient";
 
 interface MachineData {
   id: string;
@@ -95,6 +97,19 @@ export default function ProductionBoardClient({
   const [isPending, startTransition] = useTransition();
   const [typeFilter, setTypeFilter] = useState("ALL");
 
+  // Reactive state for optimistic updates
+  const [machineList, setMachineList] = useState<MachineData[]>(machines);
+  const [resolvingMachineId, setResolvingMachineId] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    setMachineList(machines);
+  }, [machines]);
+
+  const normalizedRole = (userRole || "").trim().toUpperCase();
+  const canResolveBreakdown =
+    !userRole ||
+    ["MECHANIC", "ADMINISTRATOR", "MANAGER", "PRODUCTION_SUPERVISOR", "FLOOR"].includes(normalizedRole);
+
   // Modals
   const [assignModalWO, setAssignModalWO] = useState<QueuedWorkOrder | null>(null);
   const [logOutputWO, setLogOutputWO] = useState<any | null>(null);
@@ -134,13 +149,13 @@ export default function ProductionBoardClient({
     updateUrlParams(searchTerm, newPage);
   };
 
-  const filteredMachines = machines.filter(
+  const filteredMachines = machineList.filter(
     (m) => typeFilter === "ALL" || m.type === typeFilter
   );
 
-  const runningCount = machines.filter((m) => m.status === "RUNNING").length;
-  const idleCount = machines.filter((m) => m.status === "IDLE").length;
-  const downCount = machines.filter((m) => m.status === "BREAKDOWN").length;
+  const runningCount = machineList.filter((m) => m.status === "RUNNING").length;
+  const idleCount = machineList.filter((m) => m.status === "IDLE").length;
+  const downCount = machineList.filter((m) => m.status === "BREAKDOWN").length;
 
   const handleAssignSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -199,31 +214,99 @@ export default function ProductionBoardClient({
     setErrorMsg(null);
 
     const formData = new FormData(e.currentTarget);
+    const targetMachineId = formData.get("machineId") as string;
+    const reasonText = (formData.get("reason") as string) || "Under unscheduled maintenance";
     const res = await reportBreakdownAction(formData);
 
     setLoading(false);
     if (res.error) {
       setErrorMsg(res.error);
     } else {
+      if (targetMachineId) {
+        setMachineList((prev) =>
+          prev.map((m) =>
+            m.id === targetMachineId
+              ? {
+                  ...m,
+                  status: "BREAKDOWN",
+                  activeDowntime: {
+                    id: "temp",
+                    reason: reasonText,
+                    startedAt: new Date().toISOString(),
+                  },
+                }
+              : m
+          )
+        );
+      }
       router.refresh();
       setBreakdownMachine(null);
-          }
+    }
   };
 
   const handleResolveBreakdown = async (machineId: string) => {
-    setLoading(true);
+    setResolvingMachineId(machineId);
     setErrorMsg(null);
 
-    const formData = new FormData();
-    formData.append("machineId", machineId);
-    const res = await resolveBreakdownAction(formData);
+    // Optimistically update UI so the user immediately sees machine turn IDLE
+    setMachineList((prev) =>
+      prev.map((m) =>
+        m.id === machineId
+          ? {
+              ...m,
+              status: "IDLE",
+              activeDowntime: null,
+            }
+          : m
+      )
+    );
 
-    setLoading(false);
-    if (res.error) {
-      setErrorMsg(res.error);
-    } else {
-      router.refresh();
+    try {
+      let success = false;
+      let error: string | null = null;
+
+      // 1. Try server action
+      try {
+        const formData = new FormData();
+        formData.append("machineId", machineId);
+        const actionRes = await resolveBreakdownAction(formData);
+        if (actionRes?.success) {
+          success = true;
+        } else if (actionRes?.error) {
+          error = actionRes.error;
+        }
+      } catch {
+        // Fallback to direct client API call
+      }
+
+      // 2. Direct client API call fallback if server action didn't succeed
+      if (!success) {
+        try {
+          const res = await apiClient.post<any>("/production/resolve-breakdown", { machineId });
+          if (res && res.success) {
+            success = true;
+            error = null;
+          } else if (res?.error) {
+            error = res.error;
           }
+        } catch (apiErr: any) {
+          if (!error) error = apiErr?.message || "Failed to resolve breakdown";
+        }
+      }
+
+      if (!success && error) {
+        // Revert optimistic update on failure
+        setMachineList(machines);
+        setErrorMsg(error);
+      } else {
+        router.refresh();
+      }
+    } catch (err: any) {
+      setMachineList(machines);
+      setErrorMsg(err.message || "Failed to resolve breakdown");
+    } finally {
+      setResolvingMachineId(null);
+    }
   };
 
   const handleReassignSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -360,11 +443,26 @@ export default function ProductionBoardClient({
                       {m.activeDowntime?.reason || "Under unscheduled maintenance"}
                     </p>
                     <button
-                      onClick={() => handleResolveBreakdown(m.id)}
-                      disabled={loading || (userRole !== "MECHANIC" && userRole !== "ADMINISTRATOR")}
-                      className="mt-2 w-full py-1 bg-[var(--surface)] border border-red-300 hover:bg-red-50 text-[var(--critical)] font-semibold text-[11px] rounded transition-colors"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleResolveBreakdown(m.id);
+                      }}
+                      disabled={resolvingMachineId === m.id || !canResolveBreakdown}
+                      title={canResolveBreakdown ? "Resolve breakdown and set machine to Idle" : "Mechanic or Supervisor role required"}
+                      className="mt-2 w-full py-1.5 px-3 bg-[var(--surface)] border border-red-300 hover:bg-red-50 active:bg-red-100 text-[var(--critical)] font-semibold text-[11px] rounded transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow"
                     >
-                      Resolve Breakdown & Set Idle
+                      {resolvingMachineId === m.id ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--critical)]" />
+                          <span>Setting Idle...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-3.5 h-3.5 text-[var(--critical)]" />
+                          <span>Resolve Breakdown & Set Idle</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 ) : wo ? (
@@ -575,7 +673,7 @@ export default function ProductionBoardClient({
                   className="w-full px-2 py-1.5 border border-[var(--border)] rounded text-[var(--text-primary)]"
                 >
                   <option value="">Select IDLE {assignModalWO.stage} Machine</option>
-                  {machines
+                  {machineList
                     .filter((m) => m.type === assignModalWO.stage && m.status === "IDLE")
                     .map((m) => (
                       <option key={m.id} value={m.id}>
@@ -838,7 +936,7 @@ export default function ProductionBoardClient({
                   className="w-full px-2 py-1.5 border border-[var(--border)] rounded text-[var(--text-primary)]"
                 >
                   <option value="">Select IDLE Machine</option>
-                  {machines
+                  {machineList
                     .filter((m) => m.type === reassignWO.stage && m.status === "IDLE")
                     .map((m) => (
                       <option key={m.id} value={m.id}>
