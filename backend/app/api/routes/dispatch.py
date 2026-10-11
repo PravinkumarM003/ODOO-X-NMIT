@@ -27,7 +27,7 @@ def get_dispatch_data(
         .where(Order.status.in_(["READY_TO_SHIP", "PARTIALLY_DISPATCHED", "IN_QC"]))
         .order_by(Order.orderNo.asc())
         .options(
-            selectinload(Order.rolls),
+            selectinload(Order.rolls).selectinload(Roll.dispatchLine),
             selectinload(Order.buyer),
             selectinload(Order.fabricType)
         )
@@ -44,7 +44,7 @@ def get_dispatch_data(
                 "stockStatus": r.stockStatus,
             }
             for r in ord.rolls
-            if r.qcStatus == "PASSED" and r.stockStatus == "IN_STORE"
+            if r.qcStatus == "PASSED" and r.stockStatus == "IN_STORE" and not r.dispatchLine
         ]
         disabled_rolls = [
             {
@@ -55,7 +55,7 @@ def get_dispatch_data(
                 "stockStatus": r.stockStatus,
             }
             for r in ord.rolls
-            if not (r.qcStatus == "PASSED" and r.stockStatus == "IN_STORE")
+            if not (r.qcStatus == "PASSED" and r.stockStatus == "IN_STORE" and not r.dispatchLine)
         ]
 
         if eligible_rolls:

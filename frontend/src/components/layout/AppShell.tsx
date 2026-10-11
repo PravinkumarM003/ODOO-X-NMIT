@@ -326,13 +326,14 @@ export default function AppShell({ user, notifications, children }: AppShellProp
                   </div>
 
                   <div className="py-1 border-b border-[var(--sidebar-border)]">
-                    <button
+                    <Link
+                      href="/support"
                       onClick={() => setAccountMenuOpen(false)}
                       className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-[var(--sidebar-text-secondary)] hover:text-[var(--sidebar-text)] hover:bg-[var(--sidebar-secondary)] transition-colors"
                     >
                       <HelpCircle className="w-4 h-4" />
                       Help & Support
-                    </button>
+                    </Link>
                   </div>
 
                   <div className="py-1">

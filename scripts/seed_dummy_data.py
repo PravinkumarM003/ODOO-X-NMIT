@@ -443,6 +443,8 @@ def generate_dummy_data(target_count=400):
             db.commit()
             if dl_data:
                 db.bulk_insert_mappings(DispatchLine, dl_data)
+                dispatched_roll_ids = [d["rollId"] for d in dl_data]
+                db.query(Roll).filter(Roll.id.in_(dispatched_roll_ids)).update({Roll.stockStatus: "DISPATCHED"}, synchronize_session=False)
                 db.commit()
             db.bulk_insert_mappings(Invoice, inv_data)
             db.commit()
