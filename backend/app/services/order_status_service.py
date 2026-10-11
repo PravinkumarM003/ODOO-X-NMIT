@@ -86,7 +86,14 @@ def derive_order_status_from_rolls(
             "shortfallNote": f"All {total_registered} rolls rejected ({rejected_metres:.1f} m)",
         }
 
-def recompute_order_status(order_id: str, db: Session) -> Dict[str, Any]:
+def recompute_order_status(arg1: Any, arg2: Any = None) -> Dict[str, Any]:
+    if isinstance(arg1, str):
+        order_id = arg1
+        db = arg2
+    else:
+        db = arg1
+        order_id = arg2
+
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         return {"status": "NEW", "explanation": "Order not found"}
